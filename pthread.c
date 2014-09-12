@@ -179,8 +179,13 @@ static int call_lua( lua_State *L )
     // create coroutine
     lua_State *co = NULL;
 
-    // check arguments
-    luaL_checktype( L, 2, LUA_TFUNCTION );
+    // invalid argument
+    if( lua_type( L, 2 ) != LUA_TFUNCTION ){
+        lua_pushboolean( L, 0 );
+        lua_pushstring( L, strerror( EINVAL ) );
+        return 2;
+    }
+
     // lock
     lpth_task_lock( th );
     // create coroutine
@@ -195,7 +200,7 @@ static int call_lua( lua_State *L )
     lpth_task_unlock( th );
 
     // mem error
-    lua_pushnil( L );
+    lua_pushboolean( L, 0 );
     lua_pushstring( L, strerror( errno ) );
     
     return 2;
