@@ -120,18 +120,19 @@ CHECK_TASK:
             co = lua_tothread( L, -1 );
             argc = lua_gettop( co );
             // create error thread
-            if( argc > 1 && lua_type( co, -1 ) == LUA_TFUNCTION )
+            if( argc > 1 && lua_type( co, 2 ) == LUA_TFUNCTION )
             {
                 if( ( eco = lua_newthread( L ) ) )
                 {
                     int i = 2;
 
-                    lua_xmove( co, eco, 1 );
-                    for(; i < argc; i++ ){
+                    for(; i <= argc; i++ ){
                         lua_pushvalue( co, i );
-                        lua_xmove( co, eco, 1 );
                     }
+                    lua_xmove( co, eco, argc - 1 );
                 }
+                // remove error function
+                lua_remove( co, 2 );
             }
         }
         lpth_task_unlock( th );
