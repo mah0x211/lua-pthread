@@ -1,10 +1,29 @@
-//
-//  pthread.c
-//  lua-pthread
-//
-//  Created by Masatoshi Teruya on 2014/09/12.
-//  Copyright (c) 2014 Masatoshi Teruya. All rights reserved.
-//
+/*
+ *  Copyright (C) 2014 Masatoshi Teruya
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the "Software"), to
+ *  deal in the Software without restriction, including without limitation the
+ *  rights to use, copy, modify, merge, publish, distribute, sublicense,
+ *  and/or sell copies of the Software, and to permit persons to whom the
+ *  Software is furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in
+ *  all copies or substantial portions of the Software.
+ *
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ *  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ *  DEALINGS IN THE SOFTWARE.
+ *
+ *  pthread.c
+ *  lua-pthread
+ *  Created by Masatoshi Teruya on 14/09/12.
+ *
+ */
 
 #include <signal.h>
 #include <string.h>
@@ -13,29 +32,9 @@
 #include <pthread.h>
 #include <lua.h>
 #include <lauxlib.h>
-
-
-// helper macros
-#define lstate_setmetatable(L,tname) do { \
-    luaL_getmetatable( L, tname ); \
-    lua_setmetatable( L, -2 ); \
-}while(0)
-
-#define lstate_ref(L) \
-    (luaL_ref( L, LUA_REGISTRYINDEX ))
-
-#define lstate_unref(L,ref) \
-    luaL_unref( L, LUA_REGISTRYINDEX, (ref) )
-
-#define lstate_fn2tbl(L,k,v) do{ \
-    lua_pushstring(L,k); \
-    lua_pushcfunction(L,v); \
-    lua_rawset(L,-3); \
-}while(0)
-
+#include "lauxhlib.h"
 
 #define MODULE_MT   "pthread"
-
 #define DEFAULT_TIMEWAIT    1
 
 
@@ -71,7 +70,7 @@ static int create_co( lua_State *L, lpthread_t *th )
 {
     if( ( th->task.L = lua_newthread( L ) ) ){
         // retain coroutine
-        th->task.ref = lstate_ref( L );
+        th->task.ref = lauxh_ref( L );
         pthread_mutex_init( &th->mutex, NULL );
         pthread_cond_init( &th->cond, NULL );
         pthread_mutex_init( &th->task.mutex, NULL );
@@ -83,7 +82,7 @@ static int create_co( lua_State *L, lpthread_t *th )
 
 
 static void remove_co( lua_State *L, lpthread_t *th ){
-    lstate_unref( L, th->task.ref );
+    lauxh_unref( L, th->task.ref );
     th->task.ref = LUA_REFNIL;
 }
 
@@ -92,7 +91,7 @@ static void *cothread( void *arg )
 {
     lpthread_t *th = (lpthread_t*)arg;
     lua_State *L = lua_newthread( th->L );
-    int ref = lstate_ref( th->L );
+    int ref = lauxh_ref( th->L );
     lua_State *task = th->task.L;
 
     th->join = 0;
@@ -167,7 +166,7 @@ CHECK_TASK:
     }
 
     lpth_unlock( th );
-    lstate_unref( th->L, ref );
+    lauxh_unref( th->L, ref );
 
     return NULL;
 }
@@ -203,7 +202,7 @@ static int call_lua( lua_State *L )
     // mem error
     lua_pushboolean( L, 0 );
     lua_pushstring( L, strerror( errno ) );
-    
+
     return 2;
 }
 
@@ -220,7 +219,7 @@ static int gc_lua( lua_State *L )
         pthread_join( th->id, NULL );
         remove_co( th->L, th );
     }
-    
+
     return 0;
 }
 
@@ -228,9 +227,9 @@ static int gc_lua( lua_State *L )
 static int tostring_lua( lua_State *L )
 {
     lpthread_t *th = (lpthread_t*)lua_touserdata( L, 1 );
-    
+
     lua_pushfstring( L, "<" MODULE_MT " %p>", th );
-    
+
     return 1;
 }
 
@@ -271,7 +270,7 @@ static int alloc_lua( lua_State *L )
                                         &ts ) == 0 ){
                 pthread_mutex_unlock( &CREATION_MUTEX );
                 th->id = id;
-                lstate_setmetatable( L, MODULE_MT );
+                lauxh_setmetatable( L, MODULE_MT );
                 return 1;
             }
             errstr = strerror( errno );
@@ -290,7 +289,7 @@ static int alloc_lua( lua_State *L )
     // got error
     lua_pushnil( L );
     lua_pushstring( L, errstr );
-    
+
     return 2;
 }
 
@@ -309,11 +308,11 @@ LUALIB_API int luaopen_pthread( lua_State *L )
     luaL_newmetatable( L, MODULE_MT );
     // add metamethods
     while( ptr->name ){
-        lstate_fn2tbl( L, ptr->name, ptr->func );
+        lauxh_pushfn2tbl( L, ptr->name, ptr->func );
         ptr++;
     }
     lua_pop( L, 1 );
-    
+
     // add allocator
     lua_pushcfunction( L, alloc_lua );
 
