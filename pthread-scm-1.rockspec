@@ -1,7 +1,7 @@
 package = "pthread"
 version = "scm-1"
 source = {
-    url = "git://github.com/mah0x211/lua-pthread.git"
+    url = "gitrec://github.com/mah0x211/lua-pthread.git"
 }
 description = {
     summary = "pthread module",
@@ -10,13 +10,16 @@ description = {
     maintainer = "Masatoshi Teruya"
 }
 dependencies = {
-    "lua >= 5.1"
+    "lua >= 5.1",
+    "luarocks-fetch-gitrec >= 0.2"
 }
 build = {
     type = "builtin",
     modules = {
         pthread = {
-            sources = { "pthread.c" },
+            incdirs = { "deps/lauxhlib" },
+            libraries = { "pthread" },
+            sources = { "src/pthread.c" }
         }
     }
 }
