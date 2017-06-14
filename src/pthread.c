@@ -145,7 +145,7 @@ static void *lpthread_start( void *arg )
         case LUA_ERRMEM:
         case LUA_ERRERR:
             printf("got error: %s\n", lua_tostring( th->L, -1 ) );
-        break;
+            break;
     }
     pthread_cleanup_pop( 1 );
 
