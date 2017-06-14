@@ -37,7 +37,7 @@
 #include <lauxlib.h>
 #include "lauxhlib.h"
 
-#define MODULE_MT           "pthread"
+#define LPTHREAD_MT         "pthread"
 #define DEFAULT_TIMEWAIT    1
 
 
@@ -49,6 +49,33 @@ typedef struct {
     int running;
 } lpthread_t;
 
+
+static void register_mt( lua_State *L, const char *tname,
+                         struct luaL_Reg mmethod[], struct luaL_Reg method[] )
+{
+    // create metatable
+    if( luaL_newmetatable( L, tname ) )
+    {
+        struct luaL_Reg *ptr = mmethod;
+
+        // add metamethods
+        while( ptr->name ){
+            lauxh_pushfn2tbl( L, ptr->name, ptr->func );
+            ptr++;
+        }
+        // create method
+        lua_pushstring( L, "__index" );
+        lua_newtable( L );
+        ptr = method;
+        // add methods
+        while( ptr->name ){
+            lauxh_pushfn2tbl( L, ptr->name, ptr->func );
+            ptr++;
+        }
+        lua_rawset( L, -3 );
+        lua_pop( L, 1 );
+    }
+}
 
 static void lpthread_dealloc( lpthread_t *th )
 {
@@ -128,7 +155,7 @@ static void *lpthread_start( void *arg )
 
 static int kill_lua( lua_State *L )
 {
-    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, MODULE_MT );
+    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
     lua_Integer signo = lauxh_checkinteger( L, 2 );
 
     if( pthread_kill( th->id, signo ) == 0 ){
@@ -173,7 +200,7 @@ static int join_lua( lua_State *L )
 
 static int gc_lua( lua_State *L )
 {
-    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, MODULE_MT );
+    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
 
     pthread_mutex_lock( &th->mutex );
     if( th->running ){
@@ -194,7 +221,7 @@ static int gc_lua( lua_State *L )
 
 static int tostring_lua( lua_State *L )
 {
-    lua_pushfstring( L, MODULE_MT ": %p", lua_touserdata( L, 1 ) );
+    lua_pushfstring( L, LPTHREAD_MT ": %p", lua_touserdata( L, 1 ) );
     return 1;
 }
 
@@ -251,7 +278,7 @@ static int new_lua( lua_State *L )
         return 2;
     }
 
-    lauxh_setmetatable( L, MODULE_MT );
+    lauxh_setmetatable( L, LPTHREAD_MT );
 
     // resume thread
     pthread_cond_signal( &th->cond );
@@ -273,27 +300,9 @@ LUALIB_API int luaopen_pthread( lua_State *L )
         { "kill", kill_lua },
         { NULL, NULL }
     };
-    struct luaL_Reg *ptr = mmethod;
 
-    // create metatable
-    luaL_newmetatable( L, MODULE_MT );
-    // add metamethods
-    while( ptr->name ){
-        lauxh_pushfn2tbl( L, ptr->name, ptr->func );
-        ptr++;
-    }
-    // create method
-    lua_pushstring( L, "__index" );
-    lua_newtable( L );
-    ptr = method;
-    // add methods
-    while( ptr->name ){
-        lauxh_pushfn2tbl( L, ptr->name, ptr->func );
-        ptr++;
-    }
-    lua_rawset( L, -3 );
-    lua_pop( L, 1 );
-
+    // register metatable
+    register_mt( L, LPTHREAD_MT, mmethod, method );
     // add new function
     lua_newtable( L );
     lauxh_pushfn2tbl( L, "new", new_lua );
