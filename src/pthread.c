@@ -46,6 +46,7 @@ typedef struct {
     pthread_t id;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
+    pthread_mutex_t mbox_mu;
     lua_State *L;
     lua_State *mbox;
     int running;
@@ -80,6 +81,22 @@ static void register_mt( lua_State *L, const char *tname,
 }
 
 
+static int recv_mbox_lua( lua_State *L )
+{
+    lpthread_t *th = *(lpthread_t**)luaL_checkudata( L, 1, LPTHREAD_MBOX_MT );
+    int narg = 0;
+
+    pthread_mutex_lock( &th->mbox_mu );
+    narg = lua_gettop( th->mbox );
+    if( narg > 0 ){
+        lua_xmove( th->mbox, L, narg );
+    }
+    pthread_mutex_unlock( &th->mbox_mu );
+
+    return narg;
+}
+
+
 static int tostring_mbox_lua( lua_State *L )
 {
     lua_pushfstring( L, LPTHREAD_MBOX_MT ": %p", lua_topointer( L, 1 ) );
@@ -109,6 +126,7 @@ static lpthread_t *lpthread_alloc( lua_State *L )
                 { NULL, NULL }
             };
             static struct luaL_Reg method[] = {
+                { "recv", recv_mbox_lua },
                 { NULL, NULL }
             };
 
@@ -120,6 +138,7 @@ static lpthread_t *lpthread_alloc( lua_State *L )
                 lauxh_ref( th->L );
                 pthread_mutex_init( &th->mutex, NULL );
                 pthread_cond_init( &th->cond, NULL );
+                pthread_mutex_init( &th->mbox_mu, NULL );
                 th->running = 0;
                 return th;
             }
