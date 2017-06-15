@@ -46,9 +46,9 @@ typedef struct {
     pthread_t id;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-    pthread_mutex_t mbox_mu;
+    pthread_mutex_t co_mu;
     lua_State *L;
-    lua_State *mbox;
+    lua_State *co;
     int running;
 } lpthread_t;
 
@@ -152,14 +152,15 @@ static void register_mt( lua_State *L, const char *tname,
 static int recv_mbox_lua( lua_State *L )
 {
     lpthread_t *th = *(lpthread_t**)luaL_checkudata( L, 1, LPTHREAD_MBOX_MT );
+    lua_State *co = th->co;
     int narg = 0;
 
-    pthread_mutex_lock( &th->mbox_mu );
-    narg = lua_gettop( th->mbox );
+    pthread_mutex_lock( &th->co_mu );
+    narg = lua_gettop( co );
     if( narg > 0 ){
-        lua_xmove( th->mbox, L, narg );
+        lua_xmove( co, L, narg );
     }
-    pthread_mutex_unlock( &th->mbox_mu );
+    pthread_mutex_unlock( &th->co_mu );
 
     return narg;
 }
@@ -201,12 +202,12 @@ static lpthread_t *lpthread_alloc( lua_State *L )
             luaL_openlibs( th->L );
             register_mt( th->L, LPTHREAD_MBOX_MT, mmethod, method );
             // create coroutine as a mbox
-            if( ( th->mbox = lua_newthread( th->L ) ) ){
+            if( ( th->co = lua_newthread( th->L ) ) ){
                 // retain mbox
                 lauxh_ref( th->L );
                 pthread_mutex_init( &th->mutex, NULL );
                 pthread_cond_init( &th->cond, NULL );
-                pthread_mutex_init( &th->mbox_mu, NULL );
+                pthread_mutex_init( &th->co_mu, NULL );
                 th->running = 0;
                 return th;
             }
@@ -314,17 +315,18 @@ static int send_lua( lua_State *L )
 {
     int narg = lua_gettop( L );
     lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
+    lua_State *mbox = th->co;
 
-    pthread_mutex_lock( &th->mbox_mu );
+    pthread_mutex_lock( &th->co_mu );
     if( narg > 1 )
     {
         int idx = 2;
 
         for(; idx <= narg; idx++ ){
-            copy2mbox( L, th->mbox, idx );
+            copy2mbox( L, mbox, idx );
         }
     }
-    pthread_mutex_unlock( &th->mbox_mu );
+    pthread_mutex_unlock( &th->co_mu );
 
     return 0;
 }
