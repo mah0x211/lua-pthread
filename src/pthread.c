@@ -38,6 +38,7 @@
 #include "lauxhlib.h"
 
 #define LPTHREAD_MT         "pthread"
+#define LPTHREAD_MBOX_MT    "pthread.mbox"
 #define DEFAULT_TIMEWAIT    1
 
 
@@ -46,6 +47,7 @@ typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t cond;
     lua_State *L;
+    lua_State *mbox;
     int running;
 } lpthread_t;
 
@@ -77,6 +79,14 @@ static void register_mt( lua_State *L, const char *tname,
     }
 }
 
+
+static int tostring_mbox_lua( lua_State *L )
+{
+    lua_pushfstring( L, LPTHREAD_MBOX_MT ": %p", lua_topointer( L, 1 ) );
+    return 1;
+}
+
+
 static void lpthread_dealloc( lpthread_t *th )
 {
     if( th->L ){
@@ -92,12 +102,27 @@ static lpthread_t *lpthread_alloc( lua_State *L )
     // alloc
     if( th )
     {
-        if( ( th->L = luaL_newstate() ) ){
+        if( ( th->L = luaL_newstate() ) )
+        {
+            static struct luaL_Reg mmethod[] = {
+                { "__tostring", tostring_mbox_lua },
+                { NULL, NULL }
+            };
+            static struct luaL_Reg method[] = {
+                { NULL, NULL }
+            };
+
             luaL_openlibs( th->L );
-            pthread_mutex_init( &th->mutex, NULL );
-            pthread_cond_init( &th->cond, NULL );
-            th->running = 0;
-            return th;
+            register_mt( th->L, LPTHREAD_MBOX_MT, mmethod, method );
+            // create coroutine as a mbox
+            if( ( th->mbox = lua_newthread( th->L ) ) ){
+                // retain mbox
+                lauxh_ref( th->L );
+                pthread_mutex_init( &th->mutex, NULL );
+                pthread_cond_init( &th->cond, NULL );
+                th->running = 0;
+                return th;
+            }
         }
         lpthread_dealloc( th );
     }
@@ -140,7 +165,7 @@ static void *lpthread_start( void *arg )
     pthread_cond_wait( &th->cond, &th->mutex );
 
     // run script in thread
-    switch( lua_pcall( th->L, 0, 0, 0 ) ){
+    switch( lua_pcall( th->L, 1, 0, 0 ) ){
         case LUA_ERRRUN:
         case LUA_ERRMEM:
         case LUA_ERRERR:
@@ -231,6 +256,7 @@ static int new_lua( lua_State *L )
     size_t len = 0;
     const char *fn = lauxh_checklstring( L, 1, &len );
     lpthread_t *th = NULL;
+    lpthread_t **mbox = NULL;
     struct timespec ts = {
         .tv_sec = DEFAULT_TIMEWAIT,
         .tv_nsec = 0
@@ -252,6 +278,14 @@ static int new_lua( lua_State *L )
         lpthread_dealloc( th );
         return 2;
     }
+    else if( !( mbox = lua_newuserdata( th->L, sizeof( lpthread_t* ) ) ) ){
+        lua_pushnil( L );
+        lua_pushstring( L, strerror( errno ) );
+        lpthread_dealloc( th );
+        return 2;
+    }
+    *mbox = th;
+    lauxh_setmetatable( th->L, LPTHREAD_MBOX_MT );
 
     pthread_mutex_lock( &th->mutex );
     // create thread
