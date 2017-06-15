@@ -173,7 +173,7 @@ static int kill_lua( lua_State *L )
 
 static int join_lua( lua_State *L )
 {
-    lpthread_t *th = (lpthread_t*)lua_touserdata( L, 1 );
+    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
 
     pthread_mutex_lock( &th->mutex );
     if( th->running )
