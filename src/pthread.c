@@ -53,6 +53,74 @@ typedef struct {
 } lpthread_t;
 
 
+static int copy2mbox( lua_State *L, lua_State *mbox, int idx );
+
+static int tbl2mbox( lua_State *L, lua_State *mbox, int idx )
+{
+    lua_newtable( mbox );
+    lua_pushnil( L );
+
+    while( lua_next( L, idx ) )
+    {
+        if( copy2mbox( L, mbox, idx + 1 ) )
+        {
+            if( copy2mbox( L, mbox, idx + 2 ) ){
+                lua_rawset( mbox, -3 );
+            }
+            else {
+                lua_pop( mbox, 1 );
+            }
+        }
+
+        lua_pop( L, 1 );
+    }
+
+    return LUA_TTABLE;
+}
+
+
+static int copy2mbox( lua_State *L, lua_State *mbox, int idx )
+{
+    size_t len = 0;
+    const char *str = NULL;
+
+    switch( lua_type( L, idx ) )
+    {
+        case LUA_TNIL:
+            lua_pushnil( mbox );
+            return LUA_TNIL;
+
+        case LUA_TBOOLEAN:
+            lua_pushboolean( mbox, lua_toboolean( L, idx ) );
+            return LUA_TBOOLEAN;
+
+        case LUA_TLIGHTUSERDATA:
+            lua_pushlightuserdata( mbox, lua_touserdata( L, idx ) );
+            return LUA_TLIGHTUSERDATA;
+
+        case LUA_TNUMBER:
+            lua_pushnumber( mbox, lua_tonumber( L, idx ) );
+            return LUA_TNUMBER;
+
+        case LUA_TSTRING:
+            str = lua_tolstring( L, idx, &len );
+            lua_pushlstring( mbox, str, len );
+            return LUA_TSTRING;
+
+        case LUA_TTABLE:
+            return tbl2mbox( L, mbox, idx );
+
+        // ignore unsupported values
+        // LUA_TNONE:
+        // LUA_TFUNCTION
+        // LUA_TUSERDATA
+        // LUA_TTHREAD
+        default:
+            return 0;
+    }
+}
+
+
 static void register_mt( lua_State *L, const char *tname,
                          struct luaL_Reg mmethod[], struct luaL_Reg method[] )
 {
@@ -242,6 +310,26 @@ static int join_lua( lua_State *L )
 }
 
 
+static int send_lua( lua_State *L )
+{
+    int narg = lua_gettop( L );
+    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
+
+    pthread_mutex_lock( &th->mbox_mu );
+    if( narg > 1 )
+    {
+        int idx = 2;
+
+        for(; idx <= narg; idx++ ){
+            copy2mbox( L, th->mbox, idx );
+        }
+    }
+    pthread_mutex_unlock( &th->mbox_mu );
+
+    return 0;
+}
+
+
 static int gc_lua( lua_State *L )
 {
     lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
@@ -349,6 +437,7 @@ LUALIB_API int luaopen_pthread( lua_State *L )
         { NULL, NULL }
     };
     struct luaL_Reg method[] = {
+        { "send", send_lua },
         { "join", join_lua },
         { "kill", kill_lua },
         { NULL, NULL }
