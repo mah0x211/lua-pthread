@@ -25,20 +25,7 @@
  *
  */
 
-#include <stdlib.h>
-#include <unistd.h>
-#include <signal.h>
-#include <string.h>
-#include <errno.h>
-#include <stdint.h>
-#include <sys/time.h>
-#include <pthread.h>
-#include <lua.h>
-#include <lauxlib.h>
-#include "lauxhlib.h"
-
-#define LPTHREAD_MT         "pthread"
-#define LPTHREAD_MBOX_MT    "pthread.mbox"
+#include "lpthread.h"
 #define DEFAULT_TIMEWAIT    1
 
 
@@ -117,34 +104,6 @@ static int copy2mbox( lua_State *L, lua_State *mbox, int idx )
         // LUA_TTHREAD
         default:
             return 0;
-    }
-}
-
-
-static void register_mt( lua_State *L, const char *tname,
-                         struct luaL_Reg mmethod[], struct luaL_Reg method[] )
-{
-    // create metatable
-    if( luaL_newmetatable( L, tname ) )
-    {
-        struct luaL_Reg *ptr = mmethod;
-
-        // add metamethods
-        while( ptr->name ){
-            lauxh_pushfn2tbl( L, ptr->name, ptr->func );
-            ptr++;
-        }
-        // create method
-        lua_pushstring( L, "__index" );
-        lua_newtable( L );
-        ptr = method;
-        // add methods
-        while( ptr->name ){
-            lauxh_pushfn2tbl( L, ptr->name, ptr->func );
-            ptr++;
-        }
-        lua_rawset( L, -3 );
-        lua_pop( L, 1 );
     }
 }
 
@@ -446,7 +405,7 @@ LUALIB_API int luaopen_pthread( lua_State *L )
     };
 
     // register metatable
-    register_mt( L, LPTHREAD_MT, mmethod, method );
+    lpthread_register_mt( L, MODULE_MT, mmethod, method );
     // add new function
     lua_newtable( L );
     lauxh_pushfn2tbl( L, "new", new_lua );

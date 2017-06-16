@@ -19,7 +19,10 @@ build = {
         pthread = {
             incdirs = { "deps/lauxhlib" },
             libraries = { "pthread" },
-            sources = { "src/pthread.c" }
+            sources = {
+                "src/pthread.c",
+                "src/util.c",
+            }
         }
     }
 }
