@@ -26,6 +26,8 @@
  */
 
 #include "lpthread.h"
+
+#define MODULE_MT           "pthread"
 #define DEFAULT_TIMEWAIT    1
 
 
@@ -33,103 +35,9 @@ typedef struct {
     pthread_t id;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-    pthread_mutex_t co_mu;
     lua_State *L;
-    lua_State *co;
     int running;
 } lpthread_t;
-
-
-static int copy2mbox( lua_State *L, lua_State *mbox, int idx );
-
-static int tbl2mbox( lua_State *L, lua_State *mbox, int idx )
-{
-    lua_newtable( mbox );
-    lua_pushnil( L );
-
-    while( lua_next( L, idx ) )
-    {
-        if( copy2mbox( L, mbox, idx + 1 ) )
-        {
-            if( copy2mbox( L, mbox, idx + 2 ) ){
-                lua_rawset( mbox, -3 );
-            }
-            else {
-                lua_pop( mbox, 1 );
-            }
-        }
-
-        lua_pop( L, 1 );
-    }
-
-    return LUA_TTABLE;
-}
-
-
-static int copy2mbox( lua_State *L, lua_State *mbox, int idx )
-{
-    size_t len = 0;
-    const char *str = NULL;
-
-    switch( lua_type( L, idx ) )
-    {
-        case LUA_TNIL:
-            lua_pushnil( mbox );
-            return LUA_TNIL;
-
-        case LUA_TBOOLEAN:
-            lua_pushboolean( mbox, lua_toboolean( L, idx ) );
-            return LUA_TBOOLEAN;
-
-        case LUA_TLIGHTUSERDATA:
-            lua_pushlightuserdata( mbox, lua_touserdata( L, idx ) );
-            return LUA_TLIGHTUSERDATA;
-
-        case LUA_TNUMBER:
-            lua_pushnumber( mbox, lua_tonumber( L, idx ) );
-            return LUA_TNUMBER;
-
-        case LUA_TSTRING:
-            str = lua_tolstring( L, idx, &len );
-            lua_pushlstring( mbox, str, len );
-            return LUA_TSTRING;
-
-        case LUA_TTABLE:
-            return tbl2mbox( L, mbox, idx );
-
-        // ignore unsupported values
-        // LUA_TNONE:
-        // LUA_TFUNCTION
-        // LUA_TUSERDATA
-        // LUA_TTHREAD
-        default:
-            return 0;
-    }
-}
-
-
-static int recv_mbox_lua( lua_State *L )
-{
-    lpthread_t *th = *(lpthread_t**)luaL_checkudata( L, 1, LPTHREAD_MBOX_MT );
-    lua_State *co = th->co;
-    int narg = 0;
-
-    pthread_mutex_lock( &th->co_mu );
-    narg = lua_gettop( co );
-    if( narg > 0 ){
-        lua_xmove( co, L, narg );
-    }
-    pthread_mutex_unlock( &th->co_mu );
-
-    return narg;
-}
-
-
-static int tostring_mbox_lua( lua_State *L )
-{
-    lua_pushfstring( L, LPTHREAD_MBOX_MT ": %p", lua_topointer( L, 1 ) );
-    return 1;
-}
 
 
 static void lpthread_dealloc( lpthread_t *th )
@@ -147,30 +55,17 @@ static lpthread_t *lpthread_alloc( lua_State *L )
     // alloc
     if( th )
     {
-        if( ( th->L = luaL_newstate() ) )
-        {
-            static struct luaL_Reg mmethod[] = {
-                { "__tostring", tostring_mbox_lua },
-                { NULL, NULL }
-            };
-            static struct luaL_Reg method[] = {
-                { "recv", recv_mbox_lua },
-                { NULL, NULL }
-            };
-
+        errno = 0;
+        if( ( th->L = luaL_newstate() ) ){
             luaL_openlibs( th->L );
-            register_mt( th->L, LPTHREAD_MBOX_MT, mmethod, method );
-            // create coroutine as a mbox
-            if( ( th->co = lua_newthread( th->L ) ) ){
-                // retain mbox
-                lauxh_ref( th->L );
-                pthread_mutex_init( &th->mutex, NULL );
-                pthread_cond_init( &th->cond, NULL );
-                pthread_mutex_init( &th->co_mu, NULL );
-                th->running = 0;
-                return th;
-            }
+            lpthread_weakref_init( th->L );
+            lpthread_mbox_init( th->L );
+            pthread_mutex_init( &th->mutex, NULL );
+            pthread_cond_init( &th->cond, NULL );
+            th->running = 0;
+            return th;
         }
+        printf("failed to create new state %s\n", strerror( errno ) );
         lpthread_dealloc( th );
     }
 
@@ -227,7 +122,7 @@ static void *lpthread_start( void *arg )
 
 static int kill_lua( lua_State *L )
 {
-    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
+    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, MODULE_MT );
     lua_Integer signo = lauxh_checkinteger( L, 2 );
 
     if( pthread_kill( th->id, signo ) == 0 ){
@@ -245,7 +140,7 @@ static int kill_lua( lua_State *L )
 
 static int join_lua( lua_State *L )
 {
-    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
+    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, MODULE_MT );
 
     pthread_mutex_lock( &th->mutex );
     if( th->running )
@@ -270,30 +165,9 @@ static int join_lua( lua_State *L )
 }
 
 
-static int send_lua( lua_State *L )
-{
-    int narg = lua_gettop( L );
-    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
-    lua_State *mbox = th->co;
-
-    pthread_mutex_lock( &th->co_mu );
-    if( narg > 1 )
-    {
-        int idx = 2;
-
-        for(; idx <= narg; idx++ ){
-            copy2mbox( L, mbox, idx );
-        }
-    }
-    pthread_mutex_unlock( &th->co_mu );
-
-    return 0;
-}
-
-
 static int gc_lua( lua_State *L )
 {
-    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, LPTHREAD_MT );
+    lpthread_t *th = (lpthread_t*)luaL_checkudata( L, 1, MODULE_MT );
 
     pthread_mutex_lock( &th->mutex );
     if( th->running ){
@@ -314,7 +188,7 @@ static int gc_lua( lua_State *L )
 
 static int tostring_lua( lua_State *L )
 {
-    lua_pushfstring( L, LPTHREAD_MT ": %p", lua_touserdata( L, 1 ) );
+    lua_pushfstring( L, MODULE_MT ": %p", lua_touserdata( L, 1 ) );
     return 1;
 }
 
@@ -324,7 +198,7 @@ static int new_lua( lua_State *L )
     size_t len = 0;
     const char *fn = lauxh_checklstring( L, 1, &len );
     lpthread_t *th = NULL;
-    lpthread_t **mbox = NULL;
+    lpthread_mbox_t *mbox = NULL;
     struct timespec ts = {
         .tv_sec = DEFAULT_TIMEWAIT,
         .tv_nsec = 0
@@ -333,36 +207,42 @@ static int new_lua( lua_State *L )
 
     lua_settop( L, 1 );
 
-    // mem-error
-    if( !( th = lpthread_alloc( L ) ) ){
+    // allocate
+    if( !( mbox = lpthread_mbox_alloc( L, NULL ) ) ||
+        !( th = lpthread_alloc( L ) ) ){
+        printf("allocation error %p\n", mbox);
+        lua_pushnil( L );
         lua_pushnil( L );
         lua_pushstring( L, strerror( rc ) );
-        return 2;
+        return 3;
     }
     // compile error
     else if( ( rc = luaL_loadbuffer( th->L, fn, len, NULL ) ) ){
         lua_pushnil( L );
+        lua_pushnil( L );
         lua_pushstring( L, lua_tostring( th->L, -1 ) );
         lpthread_dealloc( th );
-        return 2;
+        return 3;
     }
-    else if( !( mbox = lua_newuserdata( th->L, sizeof( lpthread_t* ) ) ) ){
+    else if( !( mbox->outbox = lpthread_mbox_alloc( th->L, mbox ) ) ){
+        printf("mbox allocation error\n");
+        lua_pushnil( L );
         lua_pushnil( L );
         lua_pushstring( L, strerror( errno ) );
         lpthread_dealloc( th );
-        return 2;
+        return 3;
     }
-    *mbox = th;
-    lauxh_setmetatable( th->L, LPTHREAD_MBOX_MT );
 
     pthread_mutex_lock( &th->mutex );
     // create thread
     if( ( rc = pthread_create( &th->id, NULL, lpthread_start, (void*)th ) ) ){
+        printf("pthread create error\n");
         pthread_mutex_unlock( &th->mutex );
         lpthread_dealloc( th );
         lua_pushnil( L );
+        lua_pushnil( L );
         lua_pushstring( L, strerror( rc ) );
-        return 2;
+        return 3;
     }
 
     // wait suspend
@@ -372,21 +252,24 @@ static int new_lua( lua_State *L )
     };
     if( ( rc = pthread_cond_timedwait( &th->cond, &th->mutex,
                                        addabstime( &ts ) ) ) ){
+        printf("pthread cond wiat error\n");
         pthread_mutex_unlock( &th->mutex );
         pthread_cancel( th->id );
         lpthread_dealloc( th );
         lua_pushnil( L );
+        lua_pushnil( L );
         lua_pushstring( L, strerror( rc ) );
-        return 2;
+        return 3;
     }
 
-    lauxh_setmetatable( L, LPTHREAD_MT );
+    lauxh_setmetatable( L, MODULE_MT );
+    lua_replace( L, -3 );
 
     // resume thread
     pthread_cond_signal( &th->cond );
     pthread_mutex_unlock( &th->mutex );
 
-    return 1;
+    return 2;
 }
 
 
@@ -398,7 +281,6 @@ LUALIB_API int luaopen_pthread( lua_State *L )
         { NULL, NULL }
     };
     struct luaL_Reg method[] = {
-        { "send", send_lua },
         { "join", join_lua },
         { "kill", kill_lua },
         { NULL, NULL }
