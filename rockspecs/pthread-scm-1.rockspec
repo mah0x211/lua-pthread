@@ -22,6 +22,7 @@ build = {
             sources = {
                 "src/pthread.c",
                 "src/util.c",
+                "src/mbox.c"
             }
         }
     }

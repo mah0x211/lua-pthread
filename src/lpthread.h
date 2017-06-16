@@ -49,5 +49,15 @@ void lpthread_weakref_init( lua_State *L );
 void lpthread_weakref_set( lua_State *L, int idx );
 
 
+// inter-thread communication mechanism
+typedef struct lpthread_mbox_st {
+    lua_State *inbox;
+    pthread_mutex_t mutex;
+    struct lpthread_mbox_st *outbox;
+} lpthread_mbox_t;
+
+void lpthread_mbox_init( lua_State *L );
+lpthread_mbox_t *lpthread_mbox_alloc( lua_State *L, lpthread_mbox_t *outbox );
+
 
 #endif
