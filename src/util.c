@@ -1,5 +1,5 @@
 /*
- *  Copyright 2017 Masatoshi Teruya. All rights reserved.
+ *  Copyright (C) 2017 Masatoshi Teruya. All rights reserved.
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a
  *  copy of this software and associated documentation files (the "Software"),
@@ -19,7 +19,7 @@
  *  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  *  DEALINGS IN THE SOFTWARE.
  *
- *  weakref.c
+ *  util.c
  *  lua-pthread
  *
  *  Created by Masatoshi Teruya on 2017/06/16.
