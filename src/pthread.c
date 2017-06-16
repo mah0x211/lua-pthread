@@ -406,6 +406,7 @@ LUALIB_API int luaopen_pthread( lua_State *L )
 
     // register metatable
     lpthread_register_mt( L, MODULE_MT, mmethod, method );
+    lpthread_weakref_init( L );
     // add new function
     lua_newtable( L );
     lauxh_pushfn2tbl( L, "new", new_lua );

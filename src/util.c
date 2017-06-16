@@ -30,6 +30,30 @@
 
 #define MODULE_MT   "pthread.weakref"
 
+static int WEAKREF;
+
+void lpthread_weakref_init( lua_State *L )
+{
+    luaL_newmetatable( L, MODULE_MT );
+    lauxh_pushstr2tbl( L, "__mode", "kv" );
+    lua_pop( L, 1 );
+
+    // create weak reference table
+    lua_newtable( L );
+    lauxh_setmetatable( L, MODULE_MT );
+    WEAKREF = lauxh_ref( L );
+}
+
+
+void lpthread_weakref_set( lua_State *L, int idx )
+{
+    lauxh_pushref( L, WEAKREF );
+    lua_pushvalue( L, idx );
+    lua_pushboolean( L, 1 );
+    lua_rawset( L, -3 );
+    lua_pop( L, 1 );
+}
+
 
 void lpthread_register_mt( lua_State *L, const char *tname,
                            struct luaL_Reg mmethod[],

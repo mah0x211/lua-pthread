@@ -44,5 +44,10 @@
 void lpthread_register_mt( lua_State *L, const char *tname, struct
                            luaL_Reg mmethod[], struct luaL_Reg method[] );
 
+// weak reference utility functions
+void lpthread_weakref_init( lua_State *L );
+void lpthread_weakref_set( lua_State *L, int idx );
+
+
 
 #endif
