@@ -44,6 +44,8 @@ static void lpthread_dealloc( lpthread_t *th )
 {
     if( th->L ){
         lua_close( th->L );
+        th->L = NULL;
+        th->running = 0;
     }
 }
 
@@ -65,7 +67,6 @@ static lpthread_t *lpthread_alloc( lua_State *L )
             th->running = 0;
             return th;
         }
-        printf("failed to create new state %s\n", strerror( errno ) );
         lpthread_dealloc( th );
     }
 
@@ -89,9 +90,6 @@ static void lpthread_atexit( void *arg )
 {
     lpthread_t *th = (lpthread_t*)arg;
 
-    lua_close( th->L );
-    th->L = NULL;
-    th->running = 0;
     pthread_mutex_unlock( &th->mutex );
 }
 
@@ -154,6 +152,7 @@ static int join_lua( lua_State *L )
             lua_pushstring( L, strerror( rc ) );
             return 2;
         }
+        lpthread_dealloc( th );
     }
     else {
         pthread_mutex_unlock( &th->mutex );
