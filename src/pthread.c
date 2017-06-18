@@ -209,7 +209,6 @@ static int new_lua( lua_State *L )
     // allocate
     if( !( mbox = lpthread_mbox_alloc( L, NULL ) ) ||
         !( th = lpthread_alloc( L ) ) ){
-        printf("allocation error %p\n", mbox);
         lua_pushnil( L );
         lua_pushnil( L );
         lua_pushstring( L, strerror( rc ) );
@@ -224,7 +223,6 @@ static int new_lua( lua_State *L )
         return 3;
     }
     else if( !( mbox->outbox = lpthread_mbox_alloc( th->L, mbox ) ) ){
-        printf("mbox allocation error\n");
         lua_pushnil( L );
         lua_pushnil( L );
         lua_pushstring( L, strerror( errno ) );
@@ -235,7 +233,6 @@ static int new_lua( lua_State *L )
     pthread_mutex_lock( &th->mutex );
     // create thread
     if( ( rc = pthread_create( &th->id, NULL, lpthread_start, (void*)th ) ) ){
-        printf("pthread create error\n");
         pthread_mutex_unlock( &th->mutex );
         lpthread_dealloc( th );
         lua_pushnil( L );
@@ -251,7 +248,6 @@ static int new_lua( lua_State *L )
     };
     if( ( rc = pthread_cond_timedwait( &th->cond, &th->mutex,
                                        addabstime( &ts ) ) ) ){
-        printf("pthread cond wiat error\n");
         pthread_mutex_unlock( &th->mutex );
         pthread_cancel( th->id );
         lpthread_dealloc( th );
