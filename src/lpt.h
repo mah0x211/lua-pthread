@@ -19,14 +19,14 @@
  *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  *  THE SOFTWARE.
  *
- *  lpthread.h
+ *  lpt.h
  *  lua-pthread
  *  Created by Masatoshi Teruya on 17/06/16.
  */
 
 
-#ifndef lpthread_h
-#define lpthread_h
+#ifndef lpt_h
+#define lpt_h
 
 #include <stdlib.h>
 #include <unistd.h>
@@ -41,23 +41,23 @@
 #include "lauxhlib.h"
 
 
-void lpthread_register_mt( lua_State *L, const char *tname, struct
-                           luaL_Reg mmethod[], struct luaL_Reg method[] );
+void lpt_register_mt( lua_State *L, const char *tname, struct luaL_Reg mmethod[],
+                      struct luaL_Reg method[] );
 
 // weak reference utility functions
-void lpthread_weakref_init( lua_State *L );
-void lpthread_weakref_set( lua_State *L, int idx );
+void lpt_weakref_init( lua_State *L );
+void lpt_weakref_set( lua_State *L, int idx );
 
 
 // inter-thread communication mechanism
-typedef struct lpthread_mbox_st {
+typedef struct lpt_mbox_st {
     lua_State *inbox;
     pthread_mutex_t mutex;
-    struct lpthread_mbox_st *outbox;
-} lpthread_mbox_t;
+    struct lpt_mbox_st *outbox;
+} lpt_mbox_t;
 
-void lpthread_mbox_init( lua_State *L );
-lpthread_mbox_t *lpthread_mbox_alloc( lua_State *L, lpthread_mbox_t *outbox );
+void lpt_mbox_init( lua_State *L );
+lpt_mbox_t *lpt_mbox_alloc( lua_State *L, lpt_mbox_t *outbox );
 
 
 #endif

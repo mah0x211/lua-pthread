@@ -25,7 +25,7 @@
  *
  */
 
-#include "lpthread.h"
+#include "lpt.h"
 
 #define MODULE_MT   "pthread.mbox"
 
@@ -99,7 +99,7 @@ static int copy2mbox( lua_State *L, lua_State *mbox, int idx )
 
 static int recv_lua( lua_State *L )
 {
-    lpthread_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
+    lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
     int narg = 0;
 
     pthread_mutex_lock( &mbox->mutex );
@@ -116,7 +116,7 @@ static int recv_lua( lua_State *L )
 static int send_lua( lua_State *L )
 {
     int narg = lua_gettop( L );
-    lpthread_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
+    lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
 
     pthread_mutex_lock( &mbox->outbox->mutex );
     if( narg > 1 )
@@ -140,14 +140,14 @@ static int tostring_lua( lua_State *L )
 }
 
 
-lpthread_mbox_t *lpthread_mbox_alloc( lua_State *L, lpthread_mbox_t *outbox )
+lpt_mbox_t *lpt_mbox_alloc( lua_State *L, lpt_mbox_t *outbox )
 {
-    lpthread_mbox_t *mbox = lua_newuserdata( L, sizeof( lpthread_mbox_t ) );
+    lpt_mbox_t *mbox = lua_newuserdata( L, sizeof( lpt_mbox_t ) );
 
     if( mbox && ( mbox->inbox = lua_newthread( L ) ) ){
         pthread_mutex_init( &mbox->mutex, NULL );
         mbox->outbox = outbox;
-        lpthread_weakref_set( L, -1 );
+        lpt_weakref_set( L, -1 );
         lua_pop( L, 1 );
         lauxh_setmetatable( L, MODULE_MT );
         return mbox;
@@ -157,7 +157,7 @@ lpthread_mbox_t *lpthread_mbox_alloc( lua_State *L, lpthread_mbox_t *outbox )
 }
 
 
-void lpthread_mbox_init( lua_State *L )
+void lpt_mbox_init( lua_State *L )
 {
     static struct luaL_Reg mmethod[] = {
         { "__tostring", tostring_lua },
@@ -170,6 +170,6 @@ void lpthread_mbox_init( lua_State *L )
     };
 
     // register metatable
-    lpthread_register_mt( L, MODULE_MT, mmethod, method );
+    lpt_register_mt( L, MODULE_MT, mmethod, method );
 }
 

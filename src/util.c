@@ -25,14 +25,14 @@
  *  Created by Masatoshi Teruya on 2017/06/16.
  */
 
-#include "lpthread.h"
+#include "lpt.h"
 
 
 #define MODULE_MT   "pthread.weakref"
 
 static int WEAKREF;
 
-void lpthread_weakref_init( lua_State *L )
+void lpt_weakref_init( lua_State *L )
 {
     luaL_newmetatable( L, MODULE_MT );
     lauxh_pushstr2tbl( L, "__mode", "kv" );
@@ -45,7 +45,7 @@ void lpthread_weakref_init( lua_State *L )
 }
 
 
-void lpthread_weakref_set( lua_State *L, int idx )
+void lpt_weakref_set( lua_State *L, int idx )
 {
     lauxh_pushref( L, WEAKREF );
     lua_pushvalue( L, idx );
@@ -55,9 +55,8 @@ void lpthread_weakref_set( lua_State *L, int idx )
 }
 
 
-void lpthread_register_mt( lua_State *L, const char *tname,
-                           struct luaL_Reg mmethod[],
-                           struct luaL_Reg method[] )
+void lpt_register_mt( lua_State *L, const char *tname, struct luaL_Reg mmethod[],
+                      struct luaL_Reg method[] )
 {
     // create metatable
     if( luaL_newmetatable( L, tname ) )
