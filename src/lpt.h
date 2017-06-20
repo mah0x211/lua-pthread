@@ -44,17 +44,27 @@
 void lpt_register_mt( lua_State *L, const char *tname, struct luaL_Reg mmethod[],
                       struct luaL_Reg method[] );
 
-// weak reference utility functions
-void lpt_weakref_init( lua_State *L );
-void lpt_weakref_set( lua_State *L, int idx );
+// shared memory
+int lpt_shm_init( void );
+void *lpt_shm_create( size_t bytes, int *ref );
+int lpt_shm_retain( int ref );
+int lpt_shm_release( int ref );
+void *lpt_shm_get( int ref );
 
 
 // inter-thread communication mechanism
-typedef struct lpt_mbox_st {
+typedef struct {
+    int self;
+    int peer;
     lua_State *inbox;
+    int ref_inbox;
     pthread_mutex_t mutex;
-    struct lpt_mbox_st *outbox;
+} lpt_mbox_data_t;
+
+typedef struct {
+    lpt_mbox_data_t *data;
 } lpt_mbox_t;
+
 
 void lpt_mbox_init( lua_State *L );
 lpt_mbox_t *lpt_mbox_alloc( lua_State *L, lpt_mbox_t *outbox );

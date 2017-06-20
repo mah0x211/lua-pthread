@@ -28,30 +28,78 @@
 #include "lpt.h"
 
 
-#define MODULE_MT   "pthread.weakref"
+static lua_State *SHM_STATE = NULL;
 
-static int WEAKREF;
 
-void lpt_weakref_init( lua_State *L )
+int lpt_shm_init( void )
 {
-    luaL_newmetatable( L, MODULE_MT );
-    lauxh_pushstr2tbl( L, "__mode", "kv" );
-    lua_pop( L, 1 );
+    if( SHM_STATE || ( SHM_STATE = luaL_newstate() ) ){
+        return 0;
+    }
 
-    // create weak reference table
-    lua_newtable( L );
-    lauxh_setmetatable( L, MODULE_MT );
-    WEAKREF = lauxh_ref( L );
+    return -1;
 }
 
 
-void lpt_weakref_set( lua_State *L, int idx )
+void *lpt_shm_create( size_t bytes, int *ref )
 {
-    lauxh_pushref( L, WEAKREF );
-    lua_pushvalue( L, idx );
-    lua_pushboolean( L, 1 );
-    lua_rawset( L, -3 );
-    lua_pop( L, 1 );
+    void *udata = NULL;
+
+    if( !ref ){
+        errno = EINVAL;
+    }
+    else if( ( udata = lua_newuserdata( SHM_STATE, bytes ) ) )
+    {
+        switch( ( *ref = lauxh_ref( SHM_STATE ) ) ){
+            // failed to create reference
+            case LUA_NOREF:
+            case LUA_REFNIL:
+                break;
+
+            default:
+                return udata;
+        }
+    }
+
+    lua_settop( SHM_STATE, 0 );
+
+    return NULL;
+}
+
+
+int lpt_shm_retain( int ref )
+{
+    lauxh_pushref( SHM_STATE, ref );
+    if( lua_type( SHM_STATE, -1 ) == LUA_TUSERDATA ){
+        ref = lauxh_ref( SHM_STATE );
+    }
+    else {
+        ref = LUA_NOREF;
+    }
+    lua_settop( SHM_STATE, 0 );
+
+    return ref;
+}
+
+
+int lpt_shm_release( int ref )
+{
+    lauxh_unref( SHM_STATE, ref );
+    return LUA_NOREF;
+}
+
+
+void *lpt_shm_get( int ref )
+{
+    void *udata = NULL;
+
+    lauxh_pushref( SHM_STATE, ref );
+    if( lua_type( SHM_STATE, -1 ) == LUA_TUSERDATA ){
+        udata = lua_touserdata( SHM_STATE, -1 );
+    }
+    lua_settop( SHM_STATE, 0 );
+
+    return udata;
 }
 
 

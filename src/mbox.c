@@ -102,12 +102,12 @@ static int recv_lua( lua_State *L )
     lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
     int narg = 0;
 
-    pthread_mutex_lock( &mbox->mutex );
-    narg = lua_gettop( mbox->inbox );
+    pthread_mutex_lock( &mbox->data->mutex );
+    narg = lua_gettop( mbox->data->inbox );
     if( narg > 0 ){
-        lua_xmove( mbox->inbox, L, narg );
+        lua_xmove( mbox->data->inbox, L, narg );
     }
-    pthread_mutex_unlock( &mbox->mutex );
+    pthread_mutex_unlock( &mbox->data->mutex );
 
     return narg;
 }
@@ -117,17 +117,21 @@ static int send_lua( lua_State *L )
 {
     int narg = lua_gettop( L );
     lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
+    lpt_mbox_data_t *outbox = NULL;
 
-    pthread_mutex_lock( &mbox->outbox->mutex );
-    if( narg > 1 )
+    if( narg > 1 && ( outbox = lpt_shm_get( mbox->data->peer ) ) )
     {
-        int idx = 2;
+        pthread_mutex_lock( &outbox->mutex );
+        if( outbox->self != LUA_NOREF )
+        {
+            int idx = 2;
 
-        for(; idx <= narg; idx++ ){
-            copy2mbox( L, mbox->outbox->inbox, idx );
+            for(; idx <= narg; idx++ ){
+                copy2mbox( L, outbox->inbox, idx );
+            }
         }
+        pthread_mutex_unlock( &outbox->mutex );
     }
-    pthread_mutex_unlock( &mbox->outbox->mutex );
 
     return 0;
 }
@@ -140,17 +144,47 @@ static int tostring_lua( lua_State *L )
 }
 
 
+static int gc_lua( lua_State *L )
+{
+    lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
+
+    pthread_mutex_lock( &mbox->data->mutex );
+    mbox->data->self = lpt_shm_release( mbox->data->self );
+    mbox->data->peer = lpt_shm_release( mbox->data->peer );
+    lauxh_unref( L, mbox->data->ref_inbox );
+    pthread_mutex_unlock( &mbox->data->mutex );
+
+    return 0;
+}
+
+
 lpt_mbox_t *lpt_mbox_alloc( lua_State *L, lpt_mbox_t *outbox )
 {
-    lpt_mbox_t *mbox = lua_newuserdata( L, sizeof( lpt_mbox_t ) );
+    int ref = LUA_NOREF;
+    lpt_mbox_data_t *data = lpt_shm_create( sizeof( lpt_mbox_data_t ), &ref );
 
-    if( mbox && ( mbox->inbox = lua_newthread( L ) ) ){
-        pthread_mutex_init( &mbox->mutex, NULL );
-        mbox->outbox = outbox;
-        lpt_weakref_set( L, -1 );
-        lua_pop( L, 1 );
-        lauxh_setmetatable( L, MODULE_MT );
-        return mbox;
+    if( data )
+    {
+        lpt_mbox_t *mbox = lua_newuserdata( L, sizeof( lpt_mbox_t ) );
+
+        if( mbox && ( data->inbox = lua_newthread( L ) ) ){
+            data->ref_inbox = lauxh_ref( L );
+            lauxh_setmetatable( L, MODULE_MT );
+            data->self = ref;
+            if( outbox ){
+                data->peer = lpt_shm_retain( outbox->data->self );
+                outbox->data->peer = lpt_shm_retain( data->self );
+            }
+            else {
+                data->peer = LUA_NOREF;
+            }
+            pthread_mutex_init( &data->mutex, NULL );
+
+            mbox->data = data;
+            return mbox;
+        }
+
+        lpt_shm_release( ref );
     }
 
     return NULL;
@@ -160,6 +194,7 @@ lpt_mbox_t *lpt_mbox_alloc( lua_State *L, lpt_mbox_t *outbox )
 void lpt_mbox_init( lua_State *L )
 {
     static struct luaL_Reg mmethod[] = {
+        { "__gc", gc_lua },
         { "__tostring", tostring_lua },
         { NULL, NULL }
     };

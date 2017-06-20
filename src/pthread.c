@@ -60,7 +60,7 @@ static lpt_t *lpt_alloc( lua_State *L )
         errno = 0;
         if( ( th->L = luaL_newstate() ) ){
             luaL_openlibs( th->L );
-            lpt_weakref_init( th->L );
+            lpt_shm_init();
             lpt_mbox_init( th->L );
             pthread_mutex_init( &th->mutex, NULL );
             pthread_cond_init( &th->cond, NULL );
@@ -222,7 +222,7 @@ static int new_lua( lua_State *L )
         lpt_dealloc( th );
         return 3;
     }
-    else if( !( mbox->outbox = lpt_mbox_alloc( th->L, mbox ) ) ){
+    else if( !lpt_mbox_alloc( th->L, mbox ) ){
         lua_pushnil( L );
         lua_pushnil( L );
         lua_pushstring( L, strerror( errno ) );
@@ -283,7 +283,7 @@ LUALIB_API int luaopen_pthread( lua_State *L )
 
     // register metatable
     lpt_register_mt( L, MODULE_MT, mmethod, method );
-    lpt_weakref_init( L );
+    lpt_shm_init();
     lpt_mbox_init( L );
     // add new function
     lua_newtable( L );
