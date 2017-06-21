@@ -29,7 +29,7 @@
 
 #define MODULE_MT   "pthread.mbox"
 
-static int copy2mbox( lua_State *L, lua_State *mbox, int idx );
+static int copy2mbox( lua_State *L, lua_State *mbox, int idx, int allow_nil );
 
 static int tbl2mbox( lua_State *L, lua_State *mbox, int idx )
 {
@@ -38,34 +38,24 @@ static int tbl2mbox( lua_State *L, lua_State *mbox, int idx )
 
     while( lua_next( L, idx ) )
     {
-        if( copy2mbox( L, mbox, idx + 1 ) )
-        {
-            if( copy2mbox( L, mbox, idx + 2 ) ){
-                lua_rawset( mbox, -3 );
-            }
-            else {
-                lua_pop( mbox, 1 );
-            }
+        if( copy2mbox( L, mbox, idx + 1, 0 ) != LUA_TNONE &&
+            copy2mbox( L, mbox, idx + 2, 0 ) != LUA_TNONE ){
+            lua_rawset( mbox, -3 );
         }
-
-        lua_pop( L, 1 );
+        lua_pop( mbox, 1 );
     }
 
     return LUA_TTABLE;
 }
 
 
-static int copy2mbox( lua_State *L, lua_State *mbox, int idx )
+static int copy2mbox( lua_State *L, lua_State *mbox, int idx, int allow_nil )
 {
     size_t len = 0;
     const char *str = NULL;
 
     switch( lua_type( L, idx ) )
     {
-        case LUA_TNIL:
-            lua_pushnil( mbox );
-            return LUA_TNIL;
-
         case LUA_TBOOLEAN:
             lua_pushboolean( mbox, lua_toboolean( L, idx ) );
             return LUA_TBOOLEAN;
@@ -86,13 +76,19 @@ static int copy2mbox( lua_State *L, lua_State *mbox, int idx )
         case LUA_TTABLE:
             return tbl2mbox( L, mbox, idx );
 
+        case LUA_TNIL:
+            if( allow_nil ){
+                lua_pushnil( mbox );
+                return LUA_TNIL;
+            }
+
         // ignore unsupported values
-        // LUA_TNONE:
+        // LUA_TNONE
         // LUA_TFUNCTION
         // LUA_TUSERDATA
         // LUA_TTHREAD
         default:
-            return 0;
+            return LUA_TNONE;
     }
 }
 
@@ -127,7 +123,7 @@ static int send_lua( lua_State *L )
             int idx = 2;
 
             for(; idx <= narg; idx++ ){
-                copy2mbox( L, outbox->inbox, idx );
+                copy2mbox( L, outbox->inbox, idx, 1 );
             }
         }
         pthread_mutex_unlock( &outbox->mutex );
