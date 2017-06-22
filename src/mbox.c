@@ -29,6 +29,123 @@
 
 #define MODULE_MT   "pthread.mbox"
 
+
+typedef struct lpt_mbox_elm_st {
+    int ref;
+    int ref_co;
+    lua_State *co;
+    struct lpt_mbox_elm_st *prev;
+    struct lpt_mbox_elm_st *next;
+} lpt_que_elm_t;
+
+
+typedef struct {
+    lua_State *L;
+    size_t len;
+    lpt_que_elm_t *head;
+    lpt_que_elm_t *tail;
+} lpt_que_t;
+
+
+static void que_pop( lpt_que_t *que )
+{
+    if( que->len )
+    {
+        lpt_que_elm_t *elm = que->tail;
+
+        que->len--;
+        if( que->len ){
+            que->tail = elm->prev;
+        }
+        else {
+            que->head = que->tail = NULL;
+        }
+
+        // release reference
+        lauxh_unref( que->L, elm->ref_co );
+        lauxh_unref( que->L, elm->ref );
+    }
+}
+
+
+static lpt_que_elm_t *que_deq( lpt_que_t *que )
+{
+    if( que->len )
+    {
+        lpt_que_elm_t *elm = que->head;
+
+        que->len--;
+        que->head = elm->next;
+        if( que->head ){
+            que->head->prev = NULL;
+        }
+        else {
+            que->tail = NULL;
+        }
+        elm->prev = elm->next = NULL;
+
+        // release reference
+        lauxh_unref( que->L, elm->ref_co );
+        lauxh_unref( que->L, elm->ref );
+
+        return elm;
+    }
+
+    return NULL;
+}
+
+
+static lpt_que_elm_t *que_enq( lpt_que_t *que )
+{
+    lpt_que_elm_t *elm = lua_newuserdata( que->L, sizeof( lpt_que_elm_t ) );
+
+    if( elm )
+    {
+        if( ( elm->co = lua_newthread( que->L ) ) )
+        {
+            elm->next = NULL;
+            elm->ref_co = lauxh_ref( que->L );
+            elm->ref = lauxh_ref( que->L );
+
+            que->len++;
+            if( que->tail ){
+                elm->prev = que->tail;
+                que->tail->next = elm;
+                que->tail = elm;
+            }
+            else {
+                elm->prev = NULL;
+                que->head = que->tail = elm;
+            }
+
+            return elm;
+        }
+
+        lua_pop( que->L, 1 );
+    }
+
+    return NULL;
+}
+
+
+static lpt_que_t *que_alloc( lua_State *L )
+{
+    lpt_que_t *que = lua_newuserdata( L, sizeof( lpt_que_t ) );
+
+    if( que )
+    {
+        *que = (lpt_que_t){
+            .L = L,
+            .len = 0,
+            .head = NULL,
+            .tail = NULL
+        };
+    }
+
+    return que;
+}
+
+
 static int copy2mbox( lua_State *L, lua_State *mbox, int idx, int allow_nil );
 
 static int tbl2mbox( lua_State *L, lua_State *mbox, int idx )
@@ -96,12 +213,15 @@ static int copy2mbox( lua_State *L, lua_State *mbox, int idx, int allow_nil )
 static int recv_lua( lua_State *L )
 {
     lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
+    lpt_que_t *que = NULL;
+    lpt_que_elm_t *elm = NULL;
     int narg = 0;
 
     pthread_mutex_lock( &mbox->data->mutex );
-    narg = lua_gettop( mbox->data->inbox );
-    if( narg > 0 ){
-        lua_xmove( mbox->data->inbox, L, narg );
+    que = lua_touserdata( mbox->data->inbox, 1 );
+    if( ( elm = que_deq( que ) ) ){
+        narg = lua_gettop( elm->co );
+        lua_xmove( elm->co, L, narg );
     }
     pthread_mutex_unlock( &mbox->data->mutex );
 
@@ -114,22 +234,40 @@ static int send_lua( lua_State *L )
     int narg = lua_gettop( L );
     lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
     lpt_mbox_data_t *outbox = NULL;
+    int ok = 0;
+
 
     if( narg > 1 && ( outbox = lpt_shm_get( mbox->data->peer ) ) )
     {
         pthread_mutex_lock( &outbox->mutex );
         if( outbox->self != LUA_NOREF )
         {
-            int idx = 2;
+            lpt_que_t *que = lua_touserdata( outbox->inbox, 1 );
+            lpt_que_elm_t *elm = que_enq( que );
 
-            for(; idx <= narg; idx++ ){
-                copy2mbox( L, outbox->inbox, idx, 1 );
+            if( elm )
+            {
+                int xarg = 0;
+                int idx = 2;
+
+                for(; idx <= narg; idx++ ){
+                    // copy arguments to queue element
+                    copy2mbox( L, elm->co, idx, 1 );
+                }
+
+                ok = lua_gettop( elm->co );
+                if( !ok ){
+                    que_pop( que );
+                }
             }
         }
+
         pthread_mutex_unlock( &outbox->mutex );
     }
 
-    return 0;
+    lua_pushboolean( L, ok );
+
+    return 1;
 }
 
 
@@ -163,7 +301,9 @@ lpt_mbox_t *lpt_mbox_alloc( lua_State *L, lpt_mbox_t *outbox )
     {
         lpt_mbox_t *mbox = lua_newuserdata( L, sizeof( lpt_mbox_t ) );
 
-        if( mbox && ( data->inbox = lua_newthread( L ) ) ){
+        if( mbox && ( data->inbox = lua_newthread( L ) ) &&
+            que_alloc( data->inbox ) )
+        {
             data->ref_inbox = lauxh_ref( L );
             lauxh_setmetatable( L, MODULE_MT );
             data->self = ref;
