@@ -217,12 +217,14 @@ static int copy2mbox( lua_State *L, lua_State *mbox, int idx, int allow_nil )
 
 static int recv_lua( lua_State *L )
 {
-    lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
+    lpt_mbox_t *mbox = lua_touserdata( L, 1 );
     lpt_que_t *que = NULL;
     lpt_que_elm_t *elm = NULL;
     int narg = 0;
 
     pthread_mutex_lock( &mbox->data->mutex );
+    luaL_checkudata( L, 1, MODULE_MT );
+
     que = lua_touserdata( mbox->data->inbox, 1 );
     if( ( elm = que_deq( que ) ) ){
         narg = lua_gettop( elm->co );
@@ -236,11 +238,14 @@ static int recv_lua( lua_State *L )
 
 static int send_lua( lua_State *L )
 {
-    int narg = lua_gettop( L );
-    lpt_mbox_t *mbox = luaL_checkudata( L, 1, MODULE_MT );
+    lpt_mbox_t *mbox = lua_touserdata( L, 1 );
     lpt_mbox_data_t *outbox = NULL;
+    int narg = 0;
     int ok = 0;
 
+    pthread_mutex_lock( &mbox->data->mutex );
+    luaL_checkudata( L, 1, MODULE_MT );
+    narg = lua_gettop( L );
 
     if( narg > 1 && ( outbox = lpt_shm_get( mbox->data->peer ) ) )
     {
@@ -271,6 +276,7 @@ static int send_lua( lua_State *L )
     }
 
     lua_pushboolean( L, ok );
+    pthread_mutex_unlock( &mbox->data->mutex );
 
     return 1;
 }
