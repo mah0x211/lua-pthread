@@ -155,11 +155,16 @@ static int tbl2mbox( lua_State *L, lua_State *mbox, int idx )
 
     while( lua_next( L, idx ) )
     {
-        if( copy2mbox( L, mbox, idx + 1, 0 ) != LUA_TNONE &&
-            copy2mbox( L, mbox, idx + 2, 0 ) != LUA_TNONE ){
-            lua_rawset( mbox, -3 );
+        if( copy2mbox( L, mbox, idx + 1, 0 ) != LUA_TNONE )
+        {
+            if( copy2mbox( L, mbox, idx + 2, 0 ) != LUA_TNONE ){
+                lua_rawset( mbox, -3 );
+            }
+            else {
+                lua_pop( mbox, 1 );
+            }
         }
-        lua_pop( mbox, 1 );
+        lua_pop( L, 1 );
     }
 
     return LUA_TTABLE;
