@@ -25,7 +25,17 @@
  *
  */
 
-#include "lpt.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <string.h>
+#include <errno.h>
+#include <stdint.h>
+#include <sys/time.h>
+#include <pthread.h>
+#include <lua.h>
+#include <lauxlib.h>
+#include "lauxhlib.h"
 
 #define MODULE_MT           "pthread"
 #define DEFAULT_TIMEWAIT    1
@@ -55,20 +65,14 @@ static lpt_t *lpt_alloc( lua_State *L )
     lpt_t *th = lua_newuserdata( L, sizeof( lpt_t ) );
 
     // alloc
-    if( th )
-    {
-        errno = 0;
-        if( ( th->L = luaL_newstate() ) ){
-            luaL_openlibs( th->L );
-            lpt_shm_init();
-            lpt_mbox_init( th->L );
-            pthread_mutex_init( &th->mutex, NULL );
-            pthread_cond_init( &th->cond, NULL );
-            th->running = 0;
-            return th;
-        }
-        lpt_dealloc( th );
+    if( ( th->L = luaL_newstate() ) ){
+        luaL_openlibs( th->L );
+        pthread_mutex_init( &th->mutex, NULL );
+        pthread_cond_init( &th->cond, NULL );
+        th->running = 0;
+        return th;
     }
+    lpt_dealloc( th );
 
     return NULL;
 }
@@ -105,7 +109,7 @@ static void *on_start( void *arg )
     pthread_cond_wait( &th->cond, &th->mutex );
 
     // run script in thread
-    switch( lua_pcall( th->L, 1, 0, 0 ) ){
+    switch( lua_pcall( th->L, 0, 0, 0 ) ){
         case LUA_ERRRUN:
         case LUA_ERRMEM:
         case LUA_ERRERR:
@@ -197,7 +201,6 @@ static int new_lua( lua_State *L )
     size_t len = 0;
     const char *fn = lauxh_checklstring( L, 1, &len );
     lpt_t *th = NULL;
-    lpt_mbox_t *mbox = NULL;
     struct timespec ts = {
         .tv_sec = DEFAULT_TIMEWAIT,
         .tv_nsec = 0
@@ -207,27 +210,17 @@ static int new_lua( lua_State *L )
     lua_settop( L, 1 );
 
     // allocate
-    if( !( mbox = lpt_mbox_alloc( L, NULL ) ) ||
-        !( th = lpt_alloc( L ) ) ){
-        lua_pushnil( L );
+    if( !( th = lpt_alloc( L ) ) ){
         lua_pushnil( L );
         lua_pushstring( L, strerror( rc ) );
-        return 3;
+        return 2;
     }
     // compile error
     else if( ( rc = luaL_loadbuffer( th->L, fn, len, NULL ) ) ){
         lua_pushnil( L );
-        lua_pushnil( L );
         lua_pushstring( L, lua_tostring( th->L, -1 ) );
         lpt_dealloc( th );
-        return 3;
-    }
-    else if( !lpt_mbox_alloc( th->L, mbox ) ){
-        lua_pushnil( L );
-        lua_pushnil( L );
-        lua_pushstring( L, strerror( errno ) );
-        lpt_dealloc( th );
-        return 3;
+        return 2;
     }
 
     pthread_mutex_lock( &th->mutex );
@@ -236,35 +229,27 @@ static int new_lua( lua_State *L )
         pthread_mutex_unlock( &th->mutex );
         lpt_dealloc( th );
         lua_pushnil( L );
-        lua_pushnil( L );
         lua_pushstring( L, strerror( rc ) );
-        return 3;
+        return 2;
     }
-
     // wait suspend
-    ts = (struct timespec){
-        .tv_sec = DEFAULT_TIMEWAIT,
-        .tv_nsec = 0
-    };
-    if( ( rc = pthread_cond_timedwait( &th->cond, &th->mutex,
-                                       addabstime( &ts ) ) ) ){
+    else if( ( rc = pthread_cond_timedwait( &th->cond, &th->mutex,
+                                            addabstime( &ts ) ) ) ){
         pthread_mutex_unlock( &th->mutex );
         pthread_cancel( th->id );
         lpt_dealloc( th );
         lua_pushnil( L );
-        lua_pushnil( L );
         lua_pushstring( L, strerror( rc ) );
-        return 3;
+        return 2;
     }
 
     lauxh_setmetatable( L, MODULE_MT );
-    lua_replace( L, -3 );
 
     // resume thread
     pthread_cond_signal( &th->cond );
     pthread_mutex_unlock( &th->mutex );
 
-    return 2;
+    return 1;
 }
 
 
@@ -280,11 +265,27 @@ LUALIB_API int luaopen_pthread( lua_State *L )
         { "kill", kill_lua },
         { NULL, NULL }
     };
+    struct luaL_Reg *ptr = mmethod;
 
     // register metatable
-    lpt_register_mt( L, MODULE_MT, mmethod, method );
-    lpt_shm_init();
-    lpt_mbox_init( L );
+    luaL_newmetatable( L, MODULE_MT );
+    // add metamethods
+    while( ptr->name ){
+        lauxh_pushfn2tbl( L, ptr->name, ptr->func );
+        ptr++;
+    }
+    // create method
+    lua_pushstring( L, "__index" );
+    lua_newtable( L );
+    ptr = method;
+    // add methods
+    while( ptr->name ){
+        lauxh_pushfn2tbl( L, ptr->name, ptr->func );
+        ptr++;
+    }
+    lua_rawset( L, -3 );
+    lua_pop( L, 1 );
+
     // add new function
     lua_newtable( L );
     lauxh_pushfn2tbl( L, "new", new_lua );
