@@ -101,15 +101,14 @@ static void on_exit( void *arg )
 static void *on_start( void *arg )
 {
     lpt_t *th = (lpt_t*)arg;
-
     pthread_mutex_lock( &th->mutex );
     th->running = 1;
     pthread_cleanup_push( on_exit, th );
     pthread_cond_signal( &th->cond );
     pthread_cond_wait( &th->cond, &th->mutex );
 
-    // run script in thread
-    switch( lua_pcall( th->L, 0, 0, 0 ) ){
+    // run state in thread
+    switch( lua_pcall( th->L, lua_gettop( th->L ) - 1, 0, 0 ) ){
         case LUA_ERRRUN:
         case LUA_ERRMEM:
         case LUA_ERRERR:
@@ -206,6 +205,7 @@ static int dumpcb( lua_State *L, const void* chunk, size_t bytes, void* buf )
 
 static int new_lua( lua_State *L )
 {
+    int narg = lua_gettop( L );
     size_t len = 0;
     const char *fn = NULL;
     lpt_t *th = NULL;
@@ -216,7 +216,6 @@ static int new_lua( lua_State *L )
     };
     int rc = 0;
 
-    lua_settop( L, 1 );
     // check function argument
     switch( lua_type( L, 1 ) )
     {
@@ -236,6 +235,7 @@ static int new_lua( lua_State *L )
             return luaL_error( L, "fn must be function or function string");
     }
 
+    // get function string
     fn = lua_tolstring( L, 1, &len );
 
     // allocate
@@ -250,6 +250,11 @@ static int new_lua( lua_State *L )
         lua_pushstring( L, lua_tostring( th->L, -1 ) );
         lpt_dealloc( th );
         return 2;
+    }
+
+    // copying passed arguments to thread state
+    for( int i = 2; i <= narg; i++ ){
+        lauxh_xcopy( L, th->L, i, 1 );
     }
 
     pthread_mutex_lock( &th->mutex );
