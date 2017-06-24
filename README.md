@@ -18,7 +18,7 @@ pthread module.
 
 ### th = pthread.new( fn [, ...] )
 
-returns a new `Pthread` object and run passed function in new posix thread.
+returns a new `pthread` object and run passed function in new posix thread.
 
 **Parameters**
 
