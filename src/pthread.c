@@ -196,11 +196,20 @@ static int tostring_lua( lua_State *L )
 }
 
 
+static int dumpcb( lua_State *L, const void* chunk, size_t bytes, void* buf )
+{
+    (void)L;
+    luaL_addlstring( (luaL_Buffer*)buf, (const char*)chunk, bytes );
+    return 0;
+}
+
+
 static int new_lua( lua_State *L )
 {
     size_t len = 0;
-    const char *fn = lauxh_checklstring( L, 1, &len );
+    const char *fn = NULL;
     lpt_t *th = NULL;
+    luaL_Buffer buf;
     struct timespec ts = {
         .tv_sec = DEFAULT_TIMEWAIT,
         .tv_nsec = 0
@@ -208,6 +217,26 @@ static int new_lua( lua_State *L )
     int rc = 0;
 
     lua_settop( L, 1 );
+    // check function argument
+    switch( lua_type( L, 1 ) )
+    {
+        case LUA_TFUNCTION:
+            lua_pushvalue( L, 1 );
+            luaL_buffinit( L,&buf );
+            if( lua_dump( L, dumpcb, &buf ) != 0 ){
+                return luaL_error( L, "unable to dump given function" );
+            }
+            luaL_pushresult( &buf );
+            lua_replace( L, 1 );
+            lua_pop( L, 1 );
+        case LUA_TSTRING:
+            break;
+
+        default:
+            return luaL_error( L, "fn must be function or function string");
+    }
+
+    fn = lua_tolstring( L, 1, &len );
 
     // allocate
     if( !( th = lpt_alloc( L ) ) ){
