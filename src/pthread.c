@@ -33,9 +33,9 @@
 #include <sys/time.h>
 #include <unistd.h>
 // lua
-#include "lauxhlib.h"
 #include <lauxlib.h>
 #include <lua.h>
+#include <lualib.h>
 
 #define MODULE_MT        "pthread"
 #define DEFAULT_TIMEWAIT 1
@@ -118,7 +118,7 @@ static void *on_start(void *arg)
 static int kill_lua(lua_State *L)
 {
     lpt_t *th         = (lpt_t *)luaL_checkudata(L, 1, MODULE_MT);
-    lua_Integer signo = lauxh_checkinteger(L, 2);
+    lua_Integer signo = luaL_checkinteger(L, 2);
 
     if (pthread_kill(th->id, signo) == 0) {
         lua_pushboolean(L, 1);
@@ -190,6 +190,65 @@ static int dumpcb(lua_State *L, const void *chunk, size_t bytes, void *buf)
     return 0;
 }
 
+/* copy a value to different state */
+static inline int xcopy(lua_State *from, lua_State *to, int idx,
+                        const int allow_nil)
+{
+    switch (lua_type(from, idx)) {
+    case LUA_TBOOLEAN:
+        lua_pushboolean(to, lua_toboolean(from, idx));
+        return LUA_TBOOLEAN;
+
+    case LUA_TLIGHTUSERDATA:
+        lua_pushlightuserdata(to, lua_touserdata(from, idx));
+        return LUA_TLIGHTUSERDATA;
+
+    case LUA_TNUMBER:
+        lua_pushnumber(to, lua_tonumber(from, idx));
+        return LUA_TNUMBER;
+
+    case LUA_TSTRING: {
+        size_t len      = 0;
+        const char *str = lua_tolstring(from, idx, &len);
+        lua_pushlstring(to, str, len);
+        return LUA_TSTRING;
+    }
+
+    case LUA_TTABLE:
+        lua_newtable(to);
+        // to positive number
+        if (idx < 0) {
+            idx = lua_gettop(from) + idx + 1;
+        }
+        lua_pushnil(from);
+        while (lua_next(from, idx)) {
+            if (xcopy(from, to, -2, 0) != LUA_TNONE) {
+                if (xcopy(from, to, -1, 0) != LUA_TNONE) {
+                    lua_rawset(to, -3);
+                } else {
+                    lua_pop(to, 1);
+                }
+            }
+            lua_pop(from, 1);
+        }
+        return LUA_TTABLE;
+
+    case LUA_TNIL:
+        if (allow_nil) {
+            lua_pushnil(to);
+            return LUA_TNIL;
+        }
+
+    // ignore unsupported values
+    // LUA_TNONE
+    // LUA_TFUNCTION
+    // LUA_TUSERDATA
+    // LUA_TTHREAD
+    default:
+        return LUA_TNONE;
+    }
+}
+
 static int new_lua(lua_State *L)
 {
     int narg       = lua_gettop(L);
@@ -237,7 +296,7 @@ static int new_lua(lua_State *L)
 
     // copying passed arguments to thread state
     for (int i = 2; i <= narg; i++) {
-        lauxh_xcopy(L, th->L, i, 1);
+        xcopy(L, th->L, i, 1);
     }
 
     pthread_mutex_lock(&th->mutex);
@@ -260,7 +319,8 @@ static int new_lua(lua_State *L)
         return 2;
     }
 
-    lauxh_setmetatable(L, MODULE_MT);
+    luaL_getmetatable(L, MODULE_MT);
+    lua_setmetatable(L, -2);
 
     // resume thread
     pthread_cond_signal(&th->cond);
@@ -281,30 +341,28 @@ LUALIB_API int luaopen_pthread(lua_State *L)
         {"kill", kill_lua},
         {NULL,   NULL    }
     };
-    struct luaL_Reg *ptr = mmethod;
 
     // register metatable
     luaL_newmetatable(L, MODULE_MT);
     // add metamethods
-    while (ptr->name) {
-        lauxh_pushfn2tbl(L, ptr->name, ptr->func);
-        ptr++;
+    for (struct luaL_Reg *ptr = mmethod; ptr->name; ptr++) {
+        lua_pushcfunction(L, ptr->func);
+        lua_setfield(L, -2, ptr->name);
     }
     // create method
-    lua_pushstring(L, "__index");
     lua_newtable(L);
-    ptr = method;
     // add methods
-    while (ptr->name) {
-        lauxh_pushfn2tbl(L, ptr->name, ptr->func);
-        ptr++;
+    for (struct luaL_Reg *ptr = method; ptr->name; ptr++) {
+        lua_pushcfunction(L, ptr->func);
+        lua_setfield(L, -2, ptr->name);
     }
-    lua_rawset(L, -3);
+    lua_setfield(L, -2, "__index");
     lua_pop(L, 1);
 
     // add new function
     lua_newtable(L);
-    lauxh_pushfn2tbl(L, "new", new_lua);
+    lua_pushcfunction(L, new_lua);
+    lua_setfield(L, -2, "new");
 
     return 1;
 }

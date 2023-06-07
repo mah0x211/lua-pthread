@@ -5,12 +5,6 @@ pthread module.
 **NOTE: this module is under heavy development.**
 
 
-## Dependencies
-
-- luarocks-fetch-gitrec: <https://github.com/siffiejoe/luarocks-fetch-gitrec>
-- lauxhlib: <https://github.com/mah0x211/lauxhlib>
-
-
 ---
 
 
