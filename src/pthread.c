@@ -45,7 +45,7 @@
 typedef enum {
     THREAD_RUNNING,
     THREAD_TERMINATED,
-    THREAD_FAILURE,
+    THREAD_FAILED,
     THREAD_CANCELLED,
 } lpthread_status_t;
 
@@ -87,7 +87,7 @@ static void on_cleanup(void *arg)
         }
         memcpy(th->parent->errmsg, str, len);
         th->parent->errmsg[len] = 0;
-        th->parent->status      = THREAD_FAILURE;
+        th->parent->status      = THREAD_FAILED;
     } break;
 
     case -1:
@@ -257,8 +257,8 @@ static int status_lua(lua_State *L)
         return 1;
 
     default:
-        // THREAD_FAILURE
-        lua_pushstring(L, "failure");
+        // THREAD_FAILED
+        lua_pushstring(L, "failed");
         lua_pushstring(L, th->errmsg);
         return 2;
     }

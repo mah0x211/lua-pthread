@@ -98,8 +98,8 @@ NOTE: the thread state is `running` until the `pthread:join()` method returns `t
     - `running`: the thread is still running.
     - `terminated`: the thread was terminated.
     - `canceled`: the thread was canceled.
-    - `failure`: the thread exited with an error.
-- `errmsg:string`: if `status` is `failure`, then this value is the error message.
+    - `failed`: the thread exited with an error.
+- `errmsg:string`: if `status` is `failed`, then this value is the error message.
 
 **Example**
 
