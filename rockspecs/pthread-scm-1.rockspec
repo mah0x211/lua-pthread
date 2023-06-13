@@ -11,6 +11,7 @@ description = {
 }
 dependencies = {
     "lua >= 5.1",
+    "errno >= 0.4.0",
 }
 external_dependencies = {
     PTHREAD = {

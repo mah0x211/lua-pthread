@@ -25,344 +25,427 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 // lua
-#include <lauxlib.h>
-#include <lua.h>
-#include <lualib.h>
+#include <lua_errno.h>
 
-#define MODULE_MT        "pthread"
+#define PTHREAD_MT      "pthread"
+#define PTHREAD_SELF_MT "pthread.self"
+
 #define DEFAULT_TIMEWAIT 1
+
+typedef enum {
+    THREAD_RUNNING,
+    THREAD_TERMINATED,
+    THREAD_FAILURE,
+    THREAD_CANCELLED,
+} lpthread_status_t;
 
 typedef struct {
     pthread_t id;
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
+    int pipefd[2];
+    lpthread_status_t status;
+    char errmsg[BUFSIZ];
+} lpthread_t;
+
+typedef struct {
+    int lua_status;
     lua_State *L;
-    int running;
-} lpt_t;
+    lpthread_t *parent;
+} lpthread_self_t;
 
-static void lpt_dealloc(lpt_t *th)
+static inline int tostring(lua_State *L, const char *tname)
 {
-    if (th->L) {
-        lua_close(th->L);
-        th->L       = NULL;
-        th->running = 0;
+    lua_pushfstring(L, "%s: %p", tname, lua_touserdata(L, 1));
+    return 1;
+}
+
+static int self_tostring_lua(lua_State *L)
+{
+    return tostring(L, PTHREAD_SELF_MT);
+    return 1;
+}
+
+static void on_cleanup(void *arg)
+{
+    lpthread_self_t *th = (lpthread_self_t *)arg;
+
+    switch (th->lua_status) {
+    default: {
+        size_t len      = 0;
+        const char *str = lua_tolstring(th->L, -1, &len);
+        if (len > sizeof(th->parent->errmsg) - 1) {
+            len = sizeof(th->parent->errmsg) - 1;
+        }
+        memcpy(th->parent->errmsg, str, len);
+        th->parent->errmsg[len] = 0;
+        th->parent->status      = THREAD_FAILURE;
+    } break;
+
+    case -1:
+        // STILL_RUNNING
+        th->parent->status = THREAD_CANCELLED;
+        break;
+
+    case 0:
+        // LUA_OK
+        th->parent->status = THREAD_TERMINATED;
+        break;
     }
+    write(th->parent->pipefd[1], "0", 1);
+    lua_close(th->L);
 }
 
-static lpt_t *lpt_alloc(lua_State *L)
+static int traceback(lua_State *L)
 {
-    lpt_t *th = lua_newuserdata(L, sizeof(lpt_t));
+#if LUA_VERSION_NUM >= 502
+    // push thread stack trace to dst state
+    luaL_traceback(L, L, lua_tostring(L, -1), 1);
+    return 1;
 
-    // alloc
-    if ((th->L = luaL_newstate())) {
-        luaL_openlibs(th->L);
-        pthread_mutex_init(&th->mutex, NULL);
-        pthread_cond_init(&th->cond, NULL);
-        th->running = 0;
-        return th;
+#else
+    // get debug.traceback function
+    lua_getglobal(L, "debug");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return 1;
     }
-    lpt_dealloc(th);
 
-    return NULL;
-}
+    lua_getfield(L, -1, "traceback");
+    if (!lua_isfunction(L, -1)) {
+        lua_pop(L, 2);
+        return 1;
+    }
 
-static inline struct timespec *addabstime(struct timespec *ts)
-{
-    struct timeval tv = {0};
+    // call debug.traceback function
+    lua_pushvalue(L, 1);
+    lua_pushinteger(L, 2);
+    lua_call(L, 2, 1);
+    return 1;
 
-    gettimeofday(&tv, NULL);
-    ts->tv_sec += tv.tv_sec;
-    ts->tv_nsec += tv.tv_usec * 1000;
-
-    return ts;
-}
-
-static void on_exit(void *arg)
-{
-    lpt_t *th = (lpt_t *)arg;
-
-    pthread_mutex_unlock(&th->mutex);
+#endif
 }
 
 static void *on_start(void *arg)
 {
-    lpt_t *th = (lpt_t *)arg;
+    lpthread_self_t *th = (lpthread_self_t *)arg;
 
-    pthread_mutex_lock(&th->mutex);
-    th->running = 1;
-    pthread_cleanup_push(on_exit, th);
-    pthread_cond_signal(&th->cond);
-    pthread_cond_wait(&th->cond, &th->mutex);
+    pthread_cleanup_push(on_cleanup, arg);
+    luaL_getmetatable(th->L, PTHREAD_SELF_MT);
+    lua_setmetatable(th->L, -2);
+
+    // set traceback function
+    lua_pushcfunction(th->L, traceback);
+    lua_insert(th->L, 1);
 
     // run state in thread
-    switch (lua_pcall(th->L, lua_gettop(th->L) - 1, 0, 0)) {
-    case LUA_ERRRUN:
-    case LUA_ERRMEM:
-    case LUA_ERRERR:
-        printf("got error: %s\n", lua_tostring(th->L, -1));
-        break;
-    }
+    th->lua_status = -1;
+    th->lua_status = lua_pcall(th->L, 1, 0, 1);
     pthread_cleanup_pop(1);
-
-    pthread_exit(NULL);
-}
-
-static int kill_lua(lua_State *L)
-{
-    lpt_t *th         = (lpt_t *)luaL_checkudata(L, 1, MODULE_MT);
-    lua_Integer signo = luaL_checkinteger(L, 2);
-
-    if (pthread_kill(th->id, signo) == 0) {
-        lua_pushboolean(L, 1);
-        return 1;
-    }
-
-    // got error
-    lua_pushboolean(L, 0);
-    lua_pushstring(L, strerror(errno));
-
-    return 2;
+    return NULL;
 }
 
 static int join_lua(lua_State *L)
 {
-    lpt_t *th = (lpt_t *)luaL_checkudata(L, 1, MODULE_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    int rc         = 0;
 
-    pthread_mutex_lock(&th->mutex);
-    if (th->running) {
-        int rc = 0;
-
-        pthread_cond_signal(&th->cond);
-        pthread_mutex_unlock(&th->mutex);
-        if ((rc = pthread_join(th->id, NULL))) {
-            lua_pushboolean(L, 0);
-            lua_pushstring(L, strerror(rc));
-            return 2;
-        }
-        lpt_dealloc(th);
-    } else {
-        pthread_mutex_unlock(&th->mutex);
+    if (th->pipefd[0] == -1) {
+        // already joined
+        lua_pushboolean(L, 1);
+        return 1;
     }
 
-    lua_pushboolean(L, 1);
+    char buf[3] = {0};
+    ssize_t len = read(th->pipefd[0], buf, sizeof(buf));
+    switch (len) {
+    case -1:
+        // got error
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+TIMED_OUT:
+            // timeout
+            lua_pushboolean(L, 0);
+            lua_pushnil(L);
+            lua_pushboolean(L, 1);
+            return 3;
+        } else if (errno == EBADF) {
+            if (th->status == THREAD_RUNNING) {
+                // pipe was closed but thread is still running
+                goto TIMED_OUT;
+            }
+            goto FORCE_JOIN;
+        }
+        lua_pushboolean(L, 0);
+        lua_errno_new(L, errno, NULL);
+        lua_pushnil(L);
+        return 3;
 
+    case 0:
+        return luaL_error(
+            L, "the pipe for inter-thread communication was closed for "
+               "unknown reasons.");
+
+    case 1:
+        // received the termination message from thread
+        if (*buf == '0') {
+            break;
+        }
+
+    default:
+        return luaL_error(L, "invalid thead termination message received.");
+    }
+
+    if (th->status == THREAD_RUNNING) {
+        return luaL_error(L, "thread termination message received, but thread "
+                             "status is still running.");
+    }
+
+FORCE_JOIN:
+    rc = pthread_join(th->id, NULL);
+    if (rc != 0) {
+        return luaL_error(L,
+                          "thread termination message received, but failed to "
+                          "pthread_join(): %s",
+                          strerror(rc));
+    }
+    // close pipe on the read side
+    close(th->pipefd[0]);
+    th->pipefd[0] = -1;
+
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+static int cancel_lua(lua_State *L)
+{
+    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    int rc         = pthread_cancel(th->id);
+
+    if (rc == 0) {
+        lua_pushboolean(L, 1);
+        return 1;
+    }
+    // got error
+    lua_pushboolean(L, 0);
+    lua_errno_new(L, rc, NULL);
+    return 2;
+}
+
+static int status_lua(lua_State *L)
+{
+    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+
+    if (th->pipefd[0] != -1) {
+        lua_pushstring(L, "running");
+        return 1;
+    }
+
+    switch (th->status) {
+    case THREAD_TERMINATED:
+        lua_pushstring(L, "terminated");
+        return 1;
+    case THREAD_CANCELLED:
+        lua_pushstring(L, "cancelled");
+        return 1;
+
+    default:
+        // THREAD_FAILURE
+        lua_pushstring(L, "failure");
+        lua_pushstring(L, th->errmsg);
+        return 2;
+    }
+}
+
+static int fd_lua(lua_State *L)
+{
+    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    lua_pushinteger(L, th->pipefd[0]);
+    return 1;
+}
+
+static int tostring_lua(lua_State *L)
+{
+    return tostring(L, PTHREAD_MT);
     return 1;
 }
 
 static int gc_lua(lua_State *L)
 {
-    lpt_t *th = (lpt_t *)luaL_checkudata(L, 1, MODULE_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
 
-    pthread_mutex_lock(&th->mutex);
-    if (th->running) {
-        pthread_cond_signal(&th->cond);
-        pthread_mutex_unlock(&th->mutex);
+    if (pthread_cancel(th->id) == 0) {
         pthread_join(th->id, NULL);
     }
-    // already joined
-    else {
-        pthread_mutex_unlock(&th->mutex);
+    // close pipe
+    for (int i = 0; i < 2; i++) {
+        if (th->pipefd[i] > 0) {
+            close(th->pipefd[i]);
+        }
     }
-
-    lpt_dealloc(th);
 
     return 0;
 }
 
-static int tostring_lua(lua_State *L)
+static void register_mt(lua_State *L, const char *tname,
+                        struct luaL_Reg *mmethods, struct luaL_Reg *methods)
 {
-    lua_pushfstring(L, MODULE_MT ": %p", lua_touserdata(L, 1));
-    return 1;
-}
-
-static int dumpcb(lua_State *L, const void *chunk, size_t bytes, void *buf)
-{
-    (void)L;
-    luaL_addlstring((luaL_Buffer *)buf, (const char *)chunk, bytes);
-    return 0;
-}
-
-/* copy a value to different state */
-static inline int xcopy(lua_State *from, lua_State *to, int idx,
-                        const int allow_nil)
-{
-    switch (lua_type(from, idx)) {
-    case LUA_TBOOLEAN:
-        lua_pushboolean(to, lua_toboolean(from, idx));
-        return LUA_TBOOLEAN;
-
-    case LUA_TLIGHTUSERDATA:
-        lua_pushlightuserdata(to, lua_touserdata(from, idx));
-        return LUA_TLIGHTUSERDATA;
-
-    case LUA_TNUMBER:
-        lua_pushnumber(to, lua_tonumber(from, idx));
-        return LUA_TNUMBER;
-
-    case LUA_TSTRING: {
-        size_t len      = 0;
-        const char *str = lua_tolstring(from, idx, &len);
-        lua_pushlstring(to, str, len);
-        return LUA_TSTRING;
-    }
-
-    case LUA_TTABLE:
-        lua_newtable(to);
-        // to positive number
-        if (idx < 0) {
-            idx = lua_gettop(from) + idx + 1;
-        }
-        lua_pushnil(from);
-        while (lua_next(from, idx)) {
-            if (xcopy(from, to, -2, 0) != LUA_TNONE) {
-                if (xcopy(from, to, -1, 0) != LUA_TNONE) {
-                    lua_rawset(to, -3);
-                } else {
-                    lua_pop(to, 1);
-                }
-            }
-            lua_pop(from, 1);
-        }
-        return LUA_TTABLE;
-
-    case LUA_TNIL:
-        if (allow_nil) {
-            lua_pushnil(to);
-            return LUA_TNIL;
-        }
-
-    // ignore unsupported values
-    // LUA_TNONE
-    // LUA_TFUNCTION
-    // LUA_TUSERDATA
-    // LUA_TTHREAD
-    default:
-        return LUA_TNONE;
-    }
-}
-
-static int new_lua(lua_State *L)
-{
-    int narg       = lua_gettop(L);
-    size_t len     = 0;
-    const char *fn = NULL;
-    lpt_t *th      = NULL;
-    luaL_Buffer buf;
-    struct timespec ts = {.tv_sec = DEFAULT_TIMEWAIT, .tv_nsec = 0};
-    int rc             = 0;
-
-    // check function argument
-    switch (lua_type(L, 1)) {
-    case LUA_TFUNCTION:
-        lua_pushvalue(L, 1);
-        luaL_buffinit(L, &buf);
-        if (lua_dump(L, dumpcb, &buf) != 0) {
-            return luaL_error(L, "unable to dump given function");
-        }
-        luaL_pushresult(&buf);
-        lua_replace(L, 1);
-        lua_pop(L, 1);
-    case LUA_TSTRING:
-        break;
-
-    default:
-        return luaL_error(L, "fn must be function or function string");
-    }
-
-    // get function string
-    fn = lua_tolstring(L, 1, &len);
-
-    // allocate
-    if (!(th = lpt_alloc(L))) {
-        lua_pushnil(L);
-        lua_pushstring(L, strerror(rc));
-        return 2;
-    }
-    // compile error
-    else if ((rc = luaL_loadbuffer(th->L, fn, len, NULL))) {
-        lua_pushnil(L);
-        lua_pushstring(L, lua_tostring(th->L, -1));
-        lpt_dealloc(th);
-        return 2;
-    }
-
-    // copying passed arguments to thread state
-    for (int i = 2; i <= narg; i++) {
-        xcopy(L, th->L, i, 1);
-    }
-
-    pthread_mutex_lock(&th->mutex);
-    // create thread
-    if ((rc = pthread_create(&th->id, NULL, on_start, (void *)th))) {
-        pthread_mutex_unlock(&th->mutex);
-        lpt_dealloc(th);
-        lua_pushnil(L);
-        lua_pushstring(L, strerror(rc));
-        return 2;
-    }
-    // wait suspend
-    else if ((rc = pthread_cond_timedwait(&th->cond, &th->mutex,
-                                          addabstime(&ts)))) {
-        pthread_mutex_unlock(&th->mutex);
-        pthread_cancel(th->id);
-        lpt_dealloc(th);
-        lua_pushnil(L);
-        lua_pushstring(L, strerror(rc));
-        return 2;
-    }
-
-    luaL_getmetatable(L, MODULE_MT);
-    lua_setmetatable(L, -2);
-
-    // resume thread
-    pthread_cond_signal(&th->cond);
-    pthread_mutex_unlock(&th->mutex);
-
-    return 1;
-}
-
-LUALIB_API int luaopen_pthread(lua_State *L)
-{
-    struct luaL_Reg mmethod[] = {
-        {"__gc",       gc_lua      },
-        {"__tostring", tostring_lua},
-        {NULL,         NULL        }
-    };
-    struct luaL_Reg method[] = {
-        {"join", join_lua},
-        {"kill", kill_lua},
-        {NULL,   NULL    }
-    };
-
     // register metatable
-    luaL_newmetatable(L, MODULE_MT);
+    luaL_newmetatable(L, tname);
     // add metamethods
-    for (struct luaL_Reg *ptr = mmethod; ptr->name; ptr++) {
+    for (struct luaL_Reg *ptr = mmethods; ptr->name; ptr++) {
         lua_pushcfunction(L, ptr->func);
         lua_setfield(L, -2, ptr->name);
     }
     // create method
     lua_newtable(L);
     // add methods
-    for (struct luaL_Reg *ptr = method; ptr->name; ptr++) {
+    for (struct luaL_Reg *ptr = methods; ptr->name; ptr++) {
         lua_pushcfunction(L, ptr->func);
         lua_setfield(L, -2, ptr->name);
     }
     lua_setfield(L, -2, "__index");
     lua_pop(L, 1);
+}
 
-    // add new function
-    lua_newtable(L);
+static int new_lua(lua_State *L)
+{
+    size_t len           = 0;
+    const char *filename = luaL_checklstring(L, 1, &len);
+    const char *errmsg   = NULL;
+    lpthread_t *th       = lua_newuserdata(L, sizeof(lpthread_t));
+    lua_State *thL       = NULL;
+
+    // init properties
+    memset(th, 0, sizeof(lpthread_t));
+    th->status = THREAD_RUNNING;
+
+    // create pipe
+    if (pipe(th->pipefd) != 0) {
+        goto FAIL;
+    }
+    // set o_cloexec and o_nonblock flags
+    if (fcntl(th->pipefd[0], F_SETFD, FD_CLOEXEC) != 0 ||
+        fcntl(th->pipefd[0], F_SETFL, O_NONBLOCK) != 0 ||
+        fcntl(th->pipefd[1], F_SETFD, FD_CLOEXEC) != 0) {
+        goto FAIL;
+    }
+
+    // create thread state
+    thL = luaL_newstate();
+    if (!thL) {
+        goto FAIL;
+    }
+
+    // open standard libraries and pthread module
+    luaL_openlibs(thL);
+    // open pthread module
+    errno  = 0;
+    int rc = luaL_dostring(thL, "require('pthread')");
+    if (rc != 0) {
+        errmsg = lua_tostring(thL, -1);
+        if (errno == 0) {
+            if (rc == LUA_ERRMEM) {
+                errno = ENOMEM;
+            } else {
+                errno = EINVAL;
+            }
+        }
+        goto FAIL;
+    }
+
+    // register pthead.self metatable
+    struct luaL_Reg mmethods[] = {
+        {"__tostring", self_tostring_lua},
+        {NULL,         NULL             }
+    };
+    struct luaL_Reg methods[] = {
+        {NULL, NULL}
+    };
+    register_mt(thL, PTHREAD_SELF_MT, mmethods, methods);
+
+    // load script file that runs on thread
+    rc = luaL_loadfile(thL, filename);
+    if (rc != 0) {
+        errmsg = lua_tostring(thL, -1);
+        if (errno == 0) {
+            if (rc == LUA_ERRMEM) {
+                errno = ENOMEM;
+            } else {
+                errno = EINVAL;
+            }
+        }
+        goto FAIL;
+    }
+
+    // create thread data
+    lpthread_self_t *th_self = lua_newuserdata(thL, sizeof(lpthread_self_t));
+    if (!th_self) {
+        goto FAIL;
+    }
+    // reference thread properties
+    th_self->lua_status = -1;
+    th_self->parent     = th;
+    th_self->L          = thL;
+
+    // create thread
+    errno = pthread_create(&th->id, NULL, on_start, (void *)th_self);
+    if (errno != 0) {
+        if (errno == EAGAIN) {
+            // too many threads
+            lua_pushnil(L);
+            lua_pushnil(L);
+            lua_pushboolean(L, 1);
+            return 3;
+        }
+        goto FAIL;
+    }
+
+    // set metatable
+    luaL_getmetatable(L, PTHREAD_MT);
+    lua_setmetatable(L, -2);
+    return 1;
+
+FAIL:
+    for (int i = 0; i < 2; i++) {
+        if (th->pipefd[i] > 0) {
+            close(th->pipefd[i]);
+        }
+    }
+    if (thL) {
+        lua_close(thL);
+    }
+    lua_pushnil(L);
+    lua_errno_new_with_message(L, errno, NULL, errmsg);
+    return 2;
+}
+
+LUALIB_API int luaopen_pthread(lua_State *L)
+{
+    struct luaL_Reg mmethods[] = {
+        {"__gc",       gc_lua      },
+        {"__tostring", tostring_lua},
+        {NULL,         NULL        }
+    };
+    struct luaL_Reg methods[] = {
+        {"fd",     fd_lua    },
+        {"status", status_lua},
+        {"cancel", cancel_lua},
+        {"join",   join_lua  },
+        {NULL,     NULL      }
+    };
+
+    lua_errno_loadlib(L);
+    register_mt(L, PTHREAD_MT, mmethods, methods);
+
+    // return new function
     lua_pushcfunction(L, new_lua);
-    lua_setfield(L, -2, "new");
-
     return 1;
 }
