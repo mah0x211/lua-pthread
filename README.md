@@ -1,5 +1,8 @@
 # lua-pthread
 
+[![test](https://github.com/mah0x211/lua-pthread/actions/workflows/test.yml/badge.svg)](https://github.com/mah0x211/lua-pthread/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/mah0x211/lua-pthread/branch/master/graph/badge.svg)](https://codecov.io/gh/mah0x211/lua-pthread)
+
 pthread module.
 
 **NOTE: this module is under heavy development.**
