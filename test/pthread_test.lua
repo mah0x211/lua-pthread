@@ -82,7 +82,7 @@ function testcase.join_status()
     end
     assert(ok, err)
     local status, errmsg = th:status()
-    assert.equal(status, 'failure')
+    assert.equal(status, 'failed')
     assert.match(errmsg, 'attempt to')
 end
 
