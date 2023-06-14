@@ -28,7 +28,7 @@
 
 static int join_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
     int rc         = 0;
 
     if (th->pipefd[0] == -1) {
@@ -95,7 +95,7 @@ FORCE_JOIN:
 
 static int cancel_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
     int rc         = pthread_cancel(th->id);
 
     if (rc == 0) {
@@ -110,7 +110,7 @@ static int cancel_lua(lua_State *L)
 
 static int status_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
 
     if (th->pipefd[0] != -1) {
         lua_pushstring(L, "running");
@@ -135,20 +135,20 @@ static int status_lua(lua_State *L)
 
 static int fd_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
     lua_pushinteger(L, th->pipefd[0]);
     return 1;
 }
 
 static int tostring_lua(lua_State *L)
 {
-    lua_pushfstring(L, PTHREAD_MT ": %p", lua_touserdata(L, 1));
+    lua_pushfstring(L, LPTHREAD_MT ": %p", lua_touserdata(L, 1));
     return 1;
 }
 
 static int gc_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, PTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
 
     if (pthread_cancel(th->id) == 0) {
         pthread_join(th->id, NULL);
@@ -198,7 +198,7 @@ static int new_lua(lua_State *L)
     }
 
     // set metatable
-    luaL_getmetatable(L, PTHREAD_MT);
+    luaL_getmetatable(L, LPTHREAD_MT);
     lua_setmetatable(L, -2);
     return 1;
 
@@ -230,7 +230,7 @@ LUALIB_API int luaopen_pthread(lua_State *L)
     };
 
     lua_errno_loadlib(L);
-    register_mt(L, PTHREAD_MT, mmethods, methods);
+    register_mt(L, LPTHREAD_MT, mmethods, methods);
 
     // return new function
     lua_pushcfunction(L, new_lua);

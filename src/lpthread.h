@@ -36,8 +36,8 @@
 // lua
 #include <lua_errno.h>
 
-#define PTHREAD_MT         "pthread"
-#define PTHREAD_CHANNEL_MT "pthread.channel"
+#define LPTHREAD_MT         "pthread"
+#define LPTHREAD_CHANNEL_MT "pthread.channel"
 
 typedef enum {
     THREAD_RUNNING,
