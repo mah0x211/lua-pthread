@@ -24,134 +24,7 @@
  * Created by Masatoshi Teruya on 14/09/12.
  */
 
-#include <errno.h>
-#include <fcntl.h>
-#include <pthread.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
-// lua
-#include <lua_errno.h>
-
-#define PTHREAD_MT      "pthread"
-#define PTHREAD_SELF_MT "pthread.self"
-
-#define DEFAULT_TIMEWAIT 1
-
-typedef enum {
-    THREAD_RUNNING,
-    THREAD_TERMINATED,
-    THREAD_FAILED,
-    THREAD_CANCELLED,
-} lpthread_status_t;
-
-typedef struct {
-    pthread_t id;
-    int pipefd[2];
-    lpthread_status_t status;
-    char errmsg[BUFSIZ];
-} lpthread_t;
-
-typedef struct {
-    int lua_status;
-    lua_State *L;
-    lpthread_t *parent;
-} lpthread_self_t;
-
-static inline int tostring(lua_State *L, const char *tname)
-{
-    lua_pushfstring(L, "%s: %p", tname, lua_touserdata(L, 1));
-    return 1;
-}
-
-static int self_tostring_lua(lua_State *L)
-{
-    return tostring(L, PTHREAD_SELF_MT);
-    return 1;
-}
-
-static void on_cleanup(void *arg)
-{
-    lpthread_self_t *th = (lpthread_self_t *)arg;
-
-    switch (th->lua_status) {
-    default: {
-        size_t len      = 0;
-        const char *str = lua_tolstring(th->L, -1, &len);
-        if (len > sizeof(th->parent->errmsg) - 1) {
-            len = sizeof(th->parent->errmsg) - 1;
-        }
-        memcpy(th->parent->errmsg, str, len);
-        th->parent->errmsg[len] = 0;
-        th->parent->status      = THREAD_FAILED;
-    } break;
-
-    case -1:
-        // STILL_RUNNING
-        th->parent->status = THREAD_CANCELLED;
-        break;
-
-    case 0:
-        // LUA_OK
-        th->parent->status = THREAD_TERMINATED;
-        break;
-    }
-    write(th->parent->pipefd[1], "0", 1);
-    lua_close(th->L);
-}
-
-static int traceback(lua_State *L)
-{
-#if LUA_VERSION_NUM >= 502
-    // push thread stack trace to dst state
-    luaL_traceback(L, L, lua_tostring(L, -1), 1);
-    return 1;
-
-#else
-    // get debug.traceback function
-    lua_getglobal(L, "debug");
-    if (!lua_istable(L, -1)) {
-        lua_pop(L, 1);
-        return 1;
-    }
-
-    lua_getfield(L, -1, "traceback");
-    if (!lua_isfunction(L, -1)) {
-        lua_pop(L, 2);
-        return 1;
-    }
-
-    // call debug.traceback function
-    lua_pushvalue(L, 1);
-    lua_pushinteger(L, 2);
-    lua_call(L, 2, 1);
-    return 1;
-
-#endif
-}
-
-static void *on_start(void *arg)
-{
-    lpthread_self_t *th = (lpthread_self_t *)arg;
-
-    pthread_cleanup_push(on_cleanup, arg);
-    luaL_getmetatable(th->L, PTHREAD_SELF_MT);
-    lua_setmetatable(th->L, -2);
-
-    // set traceback function
-    lua_pushcfunction(th->L, traceback);
-    lua_insert(th->L, 1);
-
-    // run state in thread
-    th->lua_status = -1;
-    th->lua_status = lua_pcall(th->L, 1, 0, 1);
-    pthread_cleanup_pop(1);
-    return NULL;
-}
+#include "lpthread.h"
 
 static int join_lua(lua_State *L)
 {
@@ -170,17 +43,12 @@ static int join_lua(lua_State *L)
     case -1:
         // got error
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-TIMED_OUT:
             // timeout
             lua_pushboolean(L, 0);
             lua_pushnil(L);
             lua_pushboolean(L, 1);
             return 3;
         } else if (errno == EBADF) {
-            if (th->status == THREAD_RUNNING) {
-                // pipe was closed but thread is still running
-                goto TIMED_OUT;
-            }
             goto FORCE_JOIN;
         }
         lua_pushboolean(L, 0);
@@ -200,7 +68,8 @@ TIMED_OUT:
         }
 
     default:
-        return luaL_error(L, "invalid thead termination message received.");
+        return luaL_error(
+            L, "invalid thread termination message received: %d %c", len, *buf);
     }
 
     if (th->status == THREAD_RUNNING) {
@@ -273,7 +142,7 @@ static int fd_lua(lua_State *L)
 
 static int tostring_lua(lua_State *L)
 {
-    return tostring(L, PTHREAD_MT);
+    lua_pushfstring(L, PTHREAD_MT ": %p", lua_touserdata(L, 1));
     return 1;
 }
 
@@ -294,34 +163,11 @@ static int gc_lua(lua_State *L)
     return 0;
 }
 
-static void register_mt(lua_State *L, const char *tname,
-                        struct luaL_Reg *mmethods, struct luaL_Reg *methods)
-{
-    // register metatable
-    luaL_newmetatable(L, tname);
-    // add metamethods
-    for (struct luaL_Reg *ptr = mmethods; ptr->name; ptr++) {
-        lua_pushcfunction(L, ptr->func);
-        lua_setfield(L, -2, ptr->name);
-    }
-    // create method
-    lua_newtable(L);
-    // add methods
-    for (struct luaL_Reg *ptr = methods; ptr->name; ptr++) {
-        lua_pushcfunction(L, ptr->func);
-        lua_setfield(L, -2, ptr->name);
-    }
-    lua_setfield(L, -2, "__index");
-    lua_pop(L, 1);
-}
-
 static int new_lua(lua_State *L)
 {
     size_t len           = 0;
     const char *filename = luaL_checklstring(L, 1, &len);
-    const char *errmsg   = NULL;
     lpthread_t *th       = lua_newuserdata(L, sizeof(lpthread_t));
-    lua_State *thL       = NULL;
 
     // init properties
     memset(th, 0, sizeof(lpthread_t));
@@ -338,65 +184,8 @@ static int new_lua(lua_State *L)
         goto FAIL;
     }
 
-    // create thread state
-    thL = luaL_newstate();
-    if (!thL) {
-        goto FAIL;
-    }
-
-    // open standard libraries and pthread module
-    luaL_openlibs(thL);
-    // open pthread module
-    errno  = 0;
-    int rc = luaL_dostring(thL, "require('pthread')");
-    if (rc != 0) {
-        errmsg = lua_tostring(thL, -1);
-        if (errno == 0) {
-            if (rc == LUA_ERRMEM) {
-                errno = ENOMEM;
-            } else {
-                errno = EINVAL;
-            }
-        }
-        goto FAIL;
-    }
-
-    // register pthead.self metatable
-    struct luaL_Reg mmethods[] = {
-        {"__tostring", self_tostring_lua},
-        {NULL,         NULL             }
-    };
-    struct luaL_Reg methods[] = {
-        {NULL, NULL}
-    };
-    register_mt(thL, PTHREAD_SELF_MT, mmethods, methods);
-
-    // load script file that runs on thread
-    rc = luaL_loadfile(thL, filename);
-    if (rc != 0) {
-        errmsg = lua_tostring(thL, -1);
-        if (errno == 0) {
-            if (rc == LUA_ERRMEM) {
-                errno = ENOMEM;
-            } else {
-                errno = EINVAL;
-            }
-        }
-        goto FAIL;
-    }
-
-    // create thread data
-    lpthread_self_t *th_self = lua_newuserdata(thL, sizeof(lpthread_self_t));
-    if (!th_self) {
-        goto FAIL;
-    }
-    // reference thread properties
-    th_self->lua_status = -1;
-    th_self->parent     = th;
-    th_self->L          = thL;
-
     // create thread
-    errno = pthread_create(&th->id, NULL, on_start, (void *)th_self);
+    errno = lpthread_self_start(th, filename);
     if (errno != 0) {
         if (errno == EAGAIN) {
             // too many threads
@@ -419,11 +208,9 @@ FAIL:
             close(th->pipefd[i]);
         }
     }
-    if (thL) {
-        lua_close(thL);
-    }
+
     lua_pushnil(L);
-    lua_errno_new_with_message(L, errno, NULL, errmsg);
+    lua_errno_new_with_message(L, errno, NULL, th->errmsg);
     return 2;
 }
 

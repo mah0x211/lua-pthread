@@ -1,5 +1,6 @@
 local testcase = require('testcase')
 local sleep = require('testcase.timer').sleep
+local close = require('testcase.close')
 local iowait = require('io.wait')
 local new_pthread = require('pthread')
 
@@ -120,5 +121,21 @@ function testcase.fd()
 
     -- test that return -1 after thread is terminated
     assert.equal(th:fd(), -1)
+end
+
+function testcase.join_even_fd_closed()
+    local th = new_pthread(new_script([[
+        require('testcase.timer').sleep(0.1)
+    ]]))
+    close(th:fd())
+    sleep(0.2)
+
+    -- test that join a thread even if fd is closed
+    local ok, err, again = th:join()
+    while again do
+        ok, err, again = th:join()
+    end
+    assert(ok, err)
+    assert.equal(th:status(), 'terminated')
 end
 
