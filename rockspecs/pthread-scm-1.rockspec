@@ -11,6 +11,7 @@ description = {
 }
 dependencies = {
     "lua >= 5.1",
+    "configh >= 0.1.0",
     "errno >= 0.4.0",
 }
 external_dependencies = {

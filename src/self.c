@@ -67,7 +67,11 @@ static void *on_start(void *arg)
     pthread_cleanup_push(on_cleanup, arg);
     // run state in thread
     th->lua_status = -1;
-    th->lua_status = lua_pcall(th->L, 1, 0, 1);
+    // stack:
+    //  1: traceback function
+    //  2: script function that passed to pthread.new
+    //  3+: arguments
+    th->lua_status = lua_pcall(th->L, lua_gettop(th->L) - 2, 0, 1);
     pthread_cleanup_pop(1);
 
     return NULL;
@@ -89,13 +93,33 @@ static int new_pthread_self(lua_State *L)
     struct luaL_Reg methods[] = {
         {NULL, NULL}
     };
+    int nchan = lua_gettop(L);
+
     register_mt(L, PTHREAD_SELF_MT, mmethods, methods);
+
+    // convert lightuserdata arguments to pthread.channel objects
+    for (int i = 1; i <= nchan; i++) {
+        luaL_checktype(L, i, LUA_TLIGHTUSERDATA);
+        queue_t *q             = (queue_t *)lua_topointer(L, i);
+        lpthread_channel_t *ch = lua_newuserdata(L, sizeof(lpthread_channel_t));
+        if (queue_ref(q) != 0) {
+            return luaL_error(L,
+                              "failed to queue_ref() in new_pthread_self(): %s",
+                              strerror(errno));
+        }
+        ch->queue = q;
+        luaL_getmetatable(L, LPTHREAD_CHANNEL_MT);
+        lua_setmetatable(L, -2);
+        lua_replace(L, i);
+    }
 
     // create pthread.self
     lua_newuserdata(L, sizeof(lpthread_self_t));
     luaL_getmetatable(L, PTHREAD_SELF_MT);
     lua_setmetatable(L, -2);
-    return 1;
+    // set pthread.self object as the first argument
+    lua_insert(L, 1);
+    return lua_gettop(L);
 }
 
 static int traceback(lua_State *L)
@@ -128,48 +152,18 @@ static int traceback(lua_State *L)
 #endif
 }
 
-int lpthread_self_start(lpthread_t *th, const char *filename)
+int lpthread_self_start(lua_State *L, lpthread_t *th, const char *filename)
 {
     // create thread state
-    lua_State *L = luaL_newstate();
-    if (!L) {
+    lua_State *thL = luaL_newstate();
+    if (!thL) {
         return errno;
     }
     // open standard libraries
-    luaL_openlibs(L);
-    // add traceback function
-    lua_pushcfunction(L, traceback);
-
-    // load script file that runs on thread
-    int rc = luaL_loadfile(L, filename);
+    luaL_openlibs(thL);
+    // open pthread module
+    int rc = luaL_dostring(thL, "require('pthread')");
     if (rc != 0) {
-        size_t len         = 0;
-        const char *errmsg = lua_tolstring(L, -1, &len);
-        if (len > sizeof(th->errmsg) - 1) {
-            len = sizeof(th->errmsg) - 1;
-        }
-        memcpy(th->errmsg, errmsg, len);
-        if (errno == 0) {
-            if (rc == LUA_ERRMEM) {
-                errno = ENOMEM;
-            } else {
-                errno = EINVAL;
-            }
-        }
-        lua_close(L);
-        return errno;
-    }
-
-    // create thread data
-    lua_pushcfunction(L, new_pthread_self);
-    rc = lua_pcall(L, 0, 1, 1);
-    if (rc != 0) {
-        size_t len         = 0;
-        const char *errmsg = lua_tolstring(L, -1, &len);
-        if (len > sizeof(th->errmsg) - 1) {
-            len = sizeof(th->errmsg) - 1;
-        }
-        memcpy(th->errmsg, errmsg, len);
         if (rc == LUA_ERRMEM) {
             errno = ENOMEM;
         } else {
@@ -178,16 +172,65 @@ int lpthread_self_start(lpthread_t *th, const char *filename)
             // LUA_ERRERR
             errno = ECANCELED;
         }
-        lua_close(L);
+        goto FAIL_LUA;
+    }
+
+    // add traceback function
+    lua_pushcfunction(thL, traceback);
+
+    // load script file that runs on thread
+    rc = luaL_loadfile(thL, filename);
+    if (rc != 0) {
+        if (errno == 0) {
+            if (rc == LUA_ERRMEM) {
+                errno = ENOMEM;
+            } else {
+                errno = EINVAL;
+            }
+        }
+        goto FAIL_LUA;
+    }
+
+    // create pthread.self and pthread.channel objects
+    lua_pushcfunction(thL, new_pthread_self);
+    // push queue_t as lightuserdata for passing to new_pthread_self
+    int nchan = lua_gettop(L) - 2;
+    for (int i = 0; i < nchan; i++) {
+        lpthread_channel_t *ch = lua_touserdata(L, i + 2);
+        lua_pushlightuserdata(thL, ch->queue);
+    }
+
+    rc = lua_pcall(thL, nchan, LUA_MULTRET, 1);
+    if (rc != 0) {
+        size_t len         = 0;
+        const char *errmsg = NULL;
+
+        if (rc == LUA_ERRMEM) {
+            errno = ENOMEM;
+        } else {
+            // LUA_ERRSYNTAX
+            // LUA_ERRRUN
+            // LUA_ERRERR
+            errno = ECANCELED;
+        }
+
+FAIL_LUA:
+        errmsg = lua_tolstring(thL, -1, &len);
+        if (len > sizeof(th->errmsg) - 1) {
+            len = sizeof(th->errmsg) - 1;
+        }
+        memcpy(th->errmsg, errmsg, len);
+        lua_close(thL);
         return errno;
     }
-    lpthread_self_t *self = luaL_checkudata(L, -1, PTHREAD_SELF_MT);
+
+    lpthread_self_t *self = luaL_checkudata(thL, -(1 + nchan), PTHREAD_SELF_MT);
     self->lua_status      = -1;
-    self->L               = L;
+    self->L               = thL;
     self->parent          = th;
     errno = pthread_create(&th->id, NULL, on_start, (void *)self);
     if (errno != 0) {
-        lua_close(L);
+        lua_close(thL);
     }
     return errno;
 }

@@ -2,7 +2,7 @@ local testcase = require('testcase')
 local sleep = require('testcase.timer').sleep
 local close = require('testcase.close')
 local iowait = require('io.wait')
-local new_pthread = require('pthread')
+local new_pthread = require('pthread').new
 
 local TMPFILE
 local function new_script(source)
@@ -58,11 +58,8 @@ function testcase.join_status()
     assert.equal(th:status(), 'running')
 
     -- test that join a thread
-    local ok, err, again = th:join()
-    while again do
-        ok, err, again = th:join()
-    end
-    assert(ok, err)
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
 
     -- test that return 'terminated' when thread is terminated
     assert.equal(th:status(), 'terminated')
@@ -77,11 +74,8 @@ function testcase.join_status()
         end
         test()
     ]]))
-    ok, err, again = th:join()
-    while again do
-        ok, err, again = th:join()
-    end
-    assert(ok, err)
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
     local status, errmsg = th:status()
     assert.equal(status, 'failed')
     assert.match(errmsg, 'attempt to')
@@ -96,11 +90,8 @@ function testcase.cancel()
 
     -- test that cancel a thread
     assert(th:cancel())
-    local ok, err, again = th:join()
-    while again do
-        ok, err, again = th:join()
-    end
-    assert(ok, err)
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
 
     -- test that return 'canceled' when thread is canceled
     assert.equal(th:status(), 'cancelled')
