@@ -201,11 +201,16 @@ local th = pthread.new(new_script([[
 print(ch:nref()) -- 2
 
 -- get data from channel until timeout
-local data = assert(ch:pop(2000))
+local data, err, again = ch:pop()
+while again do
+    data, err, again = ch:pop()
+end
+assert(data, err)
 print(data) -- 'hello from thread'
 
 -- wait for thread termination
-local ok, err, again = th:join()
+local ok
+ok, err, again = th:join()
 while again do
     ok, err, again = th:join()
 end
@@ -262,11 +267,7 @@ push the value to the channel.
 
 **Parameters**
 
-- `value:any`: value of the following types.
-    - `boolean`
-    - `number`
-    - `string`
-    - `lightuserdata`
+- `value:boolean|number|string|lightuserdata`: value to push.
 
 **Returns**
 
@@ -274,13 +275,9 @@ push the value to the channel.
 - `err:any`: error object.
 
 
-## value, err, again = pthread.channel:pop( [timeout_ms] )
+## value, err, again = pthread.channel:pop()
 
 pop the value from the channel.
-
-**Parameters**
-
-- `timeout_ms:integer`: timeout in milliseconds. if `<=0`, then return immediately. default is `0`.
 
 **Returns**
 
