@@ -8,10 +8,9 @@ ifdef PTHREAD_COVERAGE
 COVFLAGS=--coverage
 endif
 
-.PHONY: all preprocess install
+.PHONY: all install
 
-all: preprocess
-	@$(MAKE) $(TARGET)
+all: $(TARGET)
 
 preprocess:
 	lua ./configure.lua
