@@ -29,8 +29,6 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-// config
-#include "config.h"
 
 typedef struct queue_item_t {
     void *data;
