@@ -75,6 +75,49 @@ function testcase.push()
     assert.equal(ch:len(), len)
 end
 
+function testcase.fd_wait()
+    local ch = new_channel()
+
+    -- test that return fd of channel that can be used with iowait.readable
+    local fd = assert(ch:fd())
+    assert.is_uint(fd)
+
+    -- test that timeout if channel is empty
+    local ok, err, again = iowait.readable(fd, 100)
+    assert.is_false(ok)
+    assert.is_nil(err)
+    assert.is_true(again)
+
+    -- test that will be readable if push a value
+    assert(ch:push('hello'))
+    assert(ch:push('world'))
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_true(ok)
+    assert.is_nil(err)
+    assert.is_nil(again)
+
+    -- test that still be readable if queue is not empty
+    assert.equal(ch:pop(), 'hello')
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_true(ok)
+    assert.is_nil(err)
+    assert.is_nil(again)
+
+    -- test that timeout after pop all values
+    assert.equal(ch:pop(), 'world')
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_false(ok)
+    assert.is_nil(err)
+    assert.is_true(again)
+
+    -- test that it will be readable again if push a value
+    assert(ch:push('hello'))
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_true(ok)
+    assert.is_nil(err)
+    assert.is_nil(again)
+end
+
 function testcase.push_maxitem()
     -- test that create a new pthread.channel with maxitem
     local ch = new_channel(2)

@@ -188,11 +188,20 @@ int queue_push(queue_t *q, void *data, size_t size)
         q->head = q->tail = item;
     }
 
-    // notify reader
-    if (write(q->pipefd[1], "0", 1) == -1 && errno != EAGAIN &&
-        errno != EWOULDBLOCK) {
-        pthread_mutex_unlock(&q->mutex);
-        return -1;
+    // notify reader when the first item is pushed
+    if (q->totalitem == 1) {
+        int retry = 0;
+
+RETRY:
+        if (write(q->pipefd[1], "0", 1) == -1 && errno != EAGAIN &&
+            errno != EWOULDBLOCK) {
+            if (retry == 0 && errno == EINTR) {
+                retry++;
+                goto RETRY;
+            }
+            pthread_mutex_unlock(&q->mutex);
+            return -1;
+        }
     }
 
     pthread_mutex_unlock(&q->mutex);
@@ -231,16 +240,26 @@ int queue_pop(queue_t *q, void **data, size_t *size)
         return 0;
     }
 
-    // consume notification
+    *data = remove_head(q, size);
+
+    // consume notification when the last item is popped
     static char buf[1];
-    if (read(q->pipefd[0], buf, sizeof(buf)) == -1 && errno != EAGAIN &&
-        errno != EWOULDBLOCK) {
-        // failed to read from pipe
-        pthread_mutex_unlock(&q->mutex);
-        return -1;
+    if (q->totalitem == 0) {
+        int retry = 0;
+
+RETRY:
+        if (read(q->pipefd[0], buf, sizeof(buf)) == -1 && errno != EAGAIN &&
+            errno != EWOULDBLOCK) {
+            if (retry == 0 && errno == EINTR) {
+                retry++;
+                goto RETRY;
+            }
+            // failed to read from pipe
+            pthread_mutex_unlock(&q->mutex);
+            return -1;
+        }
     }
 
-    *data = remove_head(q, size);
     pthread_mutex_unlock(&q->mutex);
 
     return 0;

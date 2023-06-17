@@ -5,7 +5,12 @@
 
 pthread module.
 
-**NOTE: this module is under heavy development.**
+
+## Installation
+
+```
+luarocks install pthread
+```
 
 
 ---
@@ -254,6 +259,10 @@ get the used memory size of the channel.
 ## fd, err = pthread.channel:fd()
 
 get the file descriptor of the read end of the pipe. you can use this file descriptor with `select` or `poll` function to wait for the channel becomes readable.
+
+**NOTE**
+
+this file descriptor must not be used for other purposes. this file descriptor automatically read and write by the `pthread.channel` object.
 
 **Returns**
 
