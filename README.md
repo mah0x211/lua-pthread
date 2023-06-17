@@ -16,13 +16,14 @@ pthread module.
 the functions/methods are return the error object created by https://github.com/mah0x211/lua-errno module.
 
 
-## th, err, again = pthread( pathname )
+## th, err, again = pthread.new( pathname [, ch, ...] )
 
 executes a `pathname` script on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
 
 **Parameters**
 
 - `pathname:string`: filepath of the script to run on the created thread.
+- `ch:pthread.channel`: `pthread.channel` arguments to pass to the script.
 
 **Returns**
 
@@ -30,6 +31,16 @@ executes a `pathname` script on a new posix thread and returns a `pthread` objec
 - `err:any`: error object.
 - `again:boolean`: `true` if `pthread_create` return `EAGAIN` error.
 - `errno:number`: error number.
+
+**NOTE**
+
+When a `pthread` object is garbage collected, the thread is automatically canceled, as in the following code.
+
+```c
+if(pthread_cancel(tid) == 0){
+    pthread_join(tid);
+}
+```
 
 **Example**
 
@@ -45,7 +56,7 @@ f:write([[
 f:close()
 
 -- create thread
-local th, err, again = pthread(tmpfile)
+local th, err, again = pthread.new(tmpfile)
 os.remove(tmpfile)
 if err then
     print(err)
@@ -138,4 +149,142 @@ get the file descriptor of the read end of the pipe that is used to signal the t
 **Returns**
 
 - `fd:integer`: file descriptor. if `-1` is returned, then the thread has already terminated.
+
+
+## ch, err = pthread.channel( [maxitem [, maxsize]] )
+
+create a `pthread.channel` object.
+
+**Parameters**
+
+- `maxitem:integer`: maximum number of items that can be stored in the channel. default is `0` (unlimited).
+- `maxsize:integer`: maximum size of the item that can be stored in the channel. default is `0` (unlimited).
+
+**Returns**
+
+- `ch:pthread.channel`: `pthread.channel` object.
+- `err:any`: error object.
+
+**NOTE**
+
+A `pthread.channel` object is managed by reference count mechanism. `pthread.channel` object is automatically closed when the reference count is `0`.
+
+When a `pthread.channel` object passed to the `pthread.new` function, the reference count is incremented by `1`.
+
+**Example**
+
+the following example shows how to communicate between threads using `pthread.channel` object.
+
+```lua
+local pthread = require('pthread')
+
+-- create a script file and return the pathname
+local function new_script(source)
+    local pathname = os.tmpname()
+    local f = assert(io.open(pathname, 'w'))
+    assert(f:write(source))
+    assert(f:close())
+    return pathname
+end
+
+local ch = pthread.channel()
+-- show the number of references to the channel
+print(ch:nref()) -- 1
+
+
+-- create a thread with channel argument
+local th = pthread.new(new_script([[
+    local th, ch = ...
+    assert(ch:push('hello from thread'))
+]]), ch)
+-- show the number of references to the channel
+print(ch:nref()) -- 2
+
+-- get data from channel until timeout
+local data = assert(ch:pop(2000))
+print(data) -- 'hello from thread'
+
+-- wait for thread termination
+local ok, err, again = th:join()
+while again do
+    ok, err, again = th:join()
+end
+assert(ok, err)
+
+-- show the number of references to the channel
+print(ch:nref()) -- 1
+```
+
+
+## nref, err = pthread.channel:nref()
+
+get the number of references to the channel.
+
+**Returns**
+
+- `nref:integer`: number of references.
+- `err:any`: error object.
+
+
+## len, err = pthread.channel:len()
+
+get the number of items in the channel.
+
+**Returns**
+
+- `len:integer`: number of items.
+- `err:any`: error object.
+
+
+## size, err = pthread.channel:size()
+
+get the used memory size of the channel.
+
+**Returns**
+
+- `size:integer`: used memory size.
+- `err:any`: error object.
+
+
+## fd, err = pthread.channel:fd()
+
+get the file descriptor of the read end of the pipe. you can use this file descriptor with `select` or `poll` function to wait for the channel becomes readable.
+
+**Returns**
+
+- `fd:integer`: file descriptor.
+- `err:any`: error object.
+
+
+## ok, err = pthread.channel:push( value )
+
+push the value to the channel.
+
+**Parameters**
+
+- `value:any`: value of the following types.
+    - `boolean`
+    - `number`
+    - `string`
+    - `lightuserdata`
+
+**Returns**
+
+- `ok:boolean`: `true` on success.
+- `err:any`: error object.
+
+
+## value, err, again = pthread.channel:pop( [timeout_ms] )
+
+pop the value from the channel.
+
+**Parameters**
+
+- `timeout_ms:integer`: timeout in milliseconds. if `<=0`, then return immediately. default is `0`.
+
+**Returns**
+
+- `value:any`: oldest value in the channel.
+- `err:any`: error object.
+- `again:boolean`: `true` if the channel is empty.
 

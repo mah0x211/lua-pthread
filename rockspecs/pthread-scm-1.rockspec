@@ -11,6 +11,7 @@ description = {
 }
 dependencies = {
     "lua >= 5.1",
+    "configh >= 0.1.0",
     "errno >= 0.4.0",
 }
 external_dependencies = {
@@ -25,7 +26,8 @@ build = {
         CFLAGS = "$(CFLAGS)",
         WARNINGS = "-Wall -Wno-trigraphs -Wmissing-field-initializers -Wreturn-type -Wmissing-braces -Wparentheses -Wno-switch -Wunused-function -Wunused-label -Wunused-parameter -Wunused-variable -Wunused-value -Wuninitialized -Wunknown-pragmas -Wshadow -Wsign-compare",
         CPPFLAGS = "-I$(LUA_INCDIR) -I$(PTHREAD_INCDIR)",
-        LDFLAGS = "$(LIBFLAG) -L$(PTHREAD_LIBDIR) -lpthread",
+        LDFLAGS = "$(LIBFLAG) -L$(PTHREAD_LIBDIR)",
+        LIBS = "-lpthread",
         LIB_EXTENSION = "$(LIB_EXTENSION)",
         PTHREAD_COVERAGE = "$(PTHREAD_COVERAGE)",
     },

@@ -2,7 +2,7 @@ local testcase = require('testcase')
 local sleep = require('testcase.timer').sleep
 local close = require('testcase.close')
 local iowait = require('io.wait')
-local new_pthread = require('pthread')
+local new_pthread = require('pthread').new
 
 local TMPFILE
 local function new_script(source)
@@ -26,8 +26,14 @@ end
 
 function testcase.new()
     -- test that create a new thread
-    local th = new_pthread(new_script(""))
+    local th, err = new_pthread(new_script(''))
     assert.match(th, 'pthread: 0x%x+', false)
+    assert.is_nil(err)
+
+    -- test that return error if failed to create a new thread
+    th, err = new_pthread(new_script('function() do end'))
+    assert.is_nil(th)
+    assert.re_match(err, 'invalid', 'i')
 end
 
 --
@@ -52,17 +58,18 @@ end
 -- end
 
 function testcase.join_status()
-    local th = new_pthread(new_script(""))
+    local th = new_pthread(new_script([[
+        local assert = require('assert')
+        local th = ...
+        assert.match(th, '^pthread.self: ', false)
+    ]]))
 
     -- test that return 'running' when thread is running
     assert.equal(th:status(), 'running')
 
     -- test that join a thread
-    local ok, err, again = th:join()
-    while again do
-        ok, err, again = th:join()
-    end
-    assert(ok, err)
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
 
     -- test that return 'terminated' when thread is terminated
     assert.equal(th:status(), 'terminated')
@@ -77,14 +84,11 @@ function testcase.join_status()
         end
         test()
     ]]))
-    ok, err, again = th:join()
-    while again do
-        ok, err, again = th:join()
-    end
-    assert(ok, err)
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
     local status, errmsg = th:status()
     assert.equal(status, 'failed')
-    assert.match(errmsg, 'attempt to')
+    assert.re_match(errmsg, 'attempt to', 'i')
 end
 
 function testcase.cancel()
@@ -96,11 +100,8 @@ function testcase.cancel()
 
     -- test that cancel a thread
     assert(th:cancel())
-    local ok, err, again = th:join()
-    while again do
-        ok, err, again = th:join()
-    end
-    assert(ok, err)
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
 
     -- test that return 'canceled' when thread is canceled
     assert.equal(th:status(), 'cancelled')
