@@ -26,8 +26,14 @@ end
 
 function testcase.new()
     -- test that create a new thread
-    local th = new_pthread(new_script(""))
+    local th, err = new_pthread(new_script(''))
     assert.match(th, 'pthread: 0x%x+', false)
+    assert.is_nil(err)
+
+    -- test that return error if failed to create a new thread
+    th, err = new_pthread(new_script('function() do end'))
+    assert.is_nil(th)
+    assert.re_match(err, 'invalid', 'i')
 end
 
 --
@@ -52,7 +58,11 @@ end
 -- end
 
 function testcase.join_status()
-    local th = new_pthread(new_script(""))
+    local th = new_pthread(new_script([[
+        local assert = require('assert')
+        local th = ...
+        assert.match(th, '^pthread.self: ', false)
+    ]]))
 
     -- test that return 'running' when thread is running
     assert.equal(th:status(), 'running')
@@ -78,7 +88,7 @@ function testcase.join_status()
     assert(th:join())
     local status, errmsg = th:status()
     assert.equal(status, 'failed')
-    assert.match(errmsg, 'attempt to')
+    assert.re_match(errmsg, 'attempt to', 'i')
 end
 
 function testcase.cancel()

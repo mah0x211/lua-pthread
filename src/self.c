@@ -164,14 +164,7 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *filename)
     // open pthread module
     int rc = luaL_dostring(thL, "require('pthread')");
     if (rc != 0) {
-        if (rc == LUA_ERRMEM) {
-            errno = ENOMEM;
-        } else {
-            // LUA_ERRSYNTAX
-            // LUA_ERRRUN
-            // LUA_ERRERR
-            errno = ECANCELED;
-        }
+        errno = (rc == LUA_ERRMEM) ? ENOMEM : ECANCELED;
         goto FAIL_LUA;
     }
 
@@ -179,15 +172,10 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *filename)
     lua_pushcfunction(thL, traceback);
 
     // load script file that runs on thread
-    rc = luaL_loadfile(thL, filename);
+    errno = 0;
+    rc    = luaL_loadfile(thL, filename);
     if (rc != 0) {
-        if (errno == 0) {
-            if (rc == LUA_ERRMEM) {
-                errno = ENOMEM;
-            } else {
-                errno = EINVAL;
-            }
-        }
+        errno = (rc == LUA_ERRMEM) ? ENOMEM : EINVAL;
         goto FAIL_LUA;
     }
 
@@ -205,14 +193,7 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *filename)
         size_t len         = 0;
         const char *errmsg = NULL;
 
-        if (rc == LUA_ERRMEM) {
-            errno = ENOMEM;
-        } else {
-            // LUA_ERRSYNTAX
-            // LUA_ERRRUN
-            // LUA_ERRERR
-            errno = ECANCELED;
-        }
+        errno = (rc == LUA_ERRMEM) ? ENOMEM : EINVAL;
 
 FAIL_LUA:
         errmsg = lua_tolstring(thL, -1, &len);
