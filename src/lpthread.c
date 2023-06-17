@@ -37,8 +37,12 @@ static int join_lua(lua_State *L)
         return 1;
     }
 
+    int retry   = 0;
     char buf[3] = {0};
-    ssize_t len = read(th->pipefd[0], buf, sizeof(buf));
+    ssize_t len = 0;
+
+RETRY:
+    len = read(th->pipefd[0], buf, sizeof(buf));
     switch (len) {
     case -1:
         // got error
@@ -48,6 +52,9 @@ static int join_lua(lua_State *L)
             lua_pushnil(L);
             lua_pushboolean(L, 1);
             return 3;
+        } else if (retry == 0 && errno == EINTR) {
+            retry++;
+            goto RETRY;
         } else if (errno == EBADF) {
             goto FORCE_JOIN;
         }
