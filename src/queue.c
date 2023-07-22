@@ -165,9 +165,8 @@ int queue_push(queue_t *q, void *data, size_t size)
         (q->maxsize > 0 &&
          (size > q->maxsize || sizeof(queue_item_t) > q->maxsize - size ||
           q->totalsize > q->maxsize - size - sizeof(queue_item_t)))) {
-        errno = ENOBUFS;
         pthread_mutex_unlock(&q->mutex);
-        return -1;
+        return 0;
     }
 
     queue_item_t *item = (queue_item_t *)calloc(1, sizeof(queue_item_t));
@@ -205,7 +204,7 @@ RETRY:
     }
 
     pthread_mutex_unlock(&q->mutex);
-    return 0;
+    return 1;
 }
 
 static void *remove_head(queue_t *q, size_t *size)

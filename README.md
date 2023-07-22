@@ -268,7 +268,7 @@ this file descriptor must not be used for other purposes. this file descriptor a
 - `err:any`: error object.
 
 
-## ok, err = pthread.channel:push( value )
+## ok, err, again = pthread.channel:push( value )
 
 push the value to the channel.
 
@@ -280,6 +280,7 @@ push the value to the channel.
 
 - `ok:boolean`: `true` on success.
 - `err:any`: error object.
+- `again:boolean`: `true` if the channel is full.
 
 
 ## value, err, again = pthread.channel:pop()

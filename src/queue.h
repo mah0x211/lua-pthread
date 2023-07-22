@@ -136,7 +136,8 @@ int queue_fd(queue_t *queue);
  * @param queue The queue object.
  * @param data The data to be stored in the queue.
  * @param size The size of the data.
- * @return int 0 on success, otherwise errno is set to indicate the error.
+ * @return int 1 on success, 0 if the queue is full, otherwise errno is set to
+ * indicate the error.
  */
 int queue_push(queue_t *queue, void *data, size_t size);
 
