@@ -152,7 +152,8 @@ static int traceback(lua_State *L)
 #endif
 }
 
-int lpthread_self_start(lua_State *L, lpthread_t *th, const char *filename)
+int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
+                        int with_file)
 {
     // create thread state
     lua_State *thL = luaL_newstate();
@@ -171,9 +172,9 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *filename)
     // add traceback function
     lua_pushcfunction(thL, traceback);
 
-    // load script file that runs on thread
+    // load script or script file that runs on thread
     errno = 0;
-    rc    = luaL_loadfile(thL, filename);
+    rc    = (with_file) ? luaL_loadfile(thL, src) : luaL_loadstring(thL, src);
     if (rc != 0) {
         errno = (rc == LUA_ERRMEM) ? ENOMEM : EINVAL;
         goto FAIL_LUA;

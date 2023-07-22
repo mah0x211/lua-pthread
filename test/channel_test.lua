@@ -4,26 +4,6 @@ local iowait = require('io.wait')
 local new_pthread = require('pthread').new
 local new_channel = require('pthread').channel
 
-local TMPFILE
-local function new_script(source)
-    if TMPFILE then
-        os.remove(TMPFILE)
-    end
-
-    TMPFILE = os.tmpname()
-    local f = assert(io.open(TMPFILE, 'w'))
-    assert(f:write(source))
-    assert(f:close())
-    return TMPFILE
-end
-
-function testcase.after_each()
-    if TMPFILE then
-        os.remove(TMPFILE)
-        TMPFILE = nil
-    end
-end
-
 function testcase.create_channel()
     -- test that create a new pthread.channel
     local ch = new_channel()
@@ -186,10 +166,10 @@ end
 function testcase.pass_channel_to_thread()
     -- test that communicate between threads via channel
     local ch = new_channel()
-    local th = new_pthread(new_script([[
+    local th = new_pthread([[
         local th, ch = ...
         assert(ch:push('hello'))
-    ]]), ch)
+    ]], ch)
     -- confirm that reference count is increased
     assert.equal(ch:nref(), 2)
 
