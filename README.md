@@ -21,13 +21,13 @@ luarocks install pthread
 the functions/methods are return the error object created by https://github.com/mah0x211/lua-errno module.
 
 
-## th, err, again = pthread.new( pathname [, ch, ...] )
+## th, err, again = pthread.new( src [, ch, ...] )
 
-executes a `pathname` script on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
+executes a `src` script on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
 
 **Parameters**
 
-- `pathname:string`: filepath of the script to run on the created thread.
+- `src:string`: the script source to run on the created thread.
 - `ch:pthread.channel`: `pthread.channel` arguments to pass to the script.
 
 **Returns**
@@ -52,17 +52,10 @@ if(pthread_cancel(tid) == 0){
 ```lua
 local pthread = require('pthread')
 
--- create a script file
-local tmpfile = os.tmpname()
-local f = assert(io.open(tmpfile, 'w'))
-f:write([[
+-- create thread
+local th, err, again = pthread.new([[
     print('arguments', ...) -- arguments pthread.self: 0x7fdc7a426c88
 ]])
-f:close()
-
--- create thread
-local th, err, again = pthread.new(tmpfile)
-os.remove(tmpfile)
 if err then
     print(err)
     return
@@ -81,6 +74,20 @@ print('done')
 ```
 
 
+## th, err, again = pthread.new_with_file( filename [, ch, ...] )
+
+executes a `filename` script on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
+
+**Parameters**
+
+- `filename:string`: the script filename to run on the created thread.
+- `ch:pthread.channel`: `pthread.channel` arguments to pass to the script.
+
+**Returns**
+
+same as `pthread.new` function.
+
+
 ## ok, err, again = pthread:join()
 
 wait for thread termination.
@@ -92,7 +99,7 @@ wait for thread termination.
 - `again:boolean`: `true` if the thread has not yet terminated.
 
 
-## ok, err, again = pthread:cancel()
+## ok, err = pthread:cancel()
 
 cancel execution of a thread.
 
@@ -121,7 +128,7 @@ NOTE: the thread state is `running` until the `pthread:join()` method returns `t
 
 ```lua
 local pthread = require('pthread')
-local th, err, again = pthread.new('./script.lua')
+local th, err, again = pthread.new('')
 if err then
     print(err)
     return
@@ -183,25 +190,16 @@ the following example shows how to communicate between threads using `pthread.ch
 ```lua
 local pthread = require('pthread')
 
--- create a script file and return the pathname
-local function new_script(source)
-    local pathname = os.tmpname()
-    local f = assert(io.open(pathname, 'w'))
-    assert(f:write(source))
-    assert(f:close())
-    return pathname
-end
-
 local ch = pthread.channel()
 -- show the number of references to the channel
 print(ch:nref()) -- 1
 
 
 -- create a thread with channel argument
-local th = pthread.new(new_script([[
+local th = pthread.new([[
     local th, ch = ...
     assert(ch:push('hello from thread'))
-]]), ch)
+]], ch)
 -- show the number of references to the channel
 print(ch:nref()) -- 2
 

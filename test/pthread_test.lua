@@ -2,36 +2,29 @@ local testcase = require('testcase')
 local sleep = require('testcase.timer').sleep
 local close = require('testcase.close')
 local iowait = require('io.wait')
-local new_pthread = require('pthread').new
-
-local TMPFILE
-local function new_script(source)
-    if TMPFILE then
-        os.remove(TMPFILE)
-    end
-
-    TMPFILE = os.tmpname()
-    local f = assert(io.open(TMPFILE, 'w'))
-    assert(f:write(source))
-    assert(f:close())
-    return TMPFILE
-end
-
-function testcase.after_each()
-    if TMPFILE then
-        os.remove(TMPFILE)
-        TMPFILE = nil
-    end
-end
+local pthread = require('pthread')
 
 function testcase.new()
+    local srcfile = os.tmpname()
+    do
+        local f = assert(io.open(srcfile, 'w'))
+        assert(f:write(''))
+        assert(f:close())
+    end
+
     -- test that create a new thread
-    local th, err = new_pthread(new_script(''))
+    local th, err = pthread.new('')
+    assert.match(th, 'pthread: 0x%x+', false)
+    assert.is_nil(err)
+
+    -- test that create a new thread with file
+    th, err = pthread.new_with_file(srcfile)
+    os.remove(srcfile)
     assert.match(th, 'pthread: 0x%x+', false)
     assert.is_nil(err)
 
     -- test that return error if failed to create a new thread
-    th, err = new_pthread(new_script('function() do end'))
+    th, err = pthread.new('function() do end')
     assert.is_nil(th)
     assert.re_match(err, 'invalid', 'i')
 end
@@ -48,21 +41,21 @@ end
 --     ]]
 
 --     -- test that create a new thread
---     local th, err, again = new_pthread(new_script(source))
+--     local th, err, again = pthread.new(source)
 --     while th do
 --         threads[#threads + 1] = th
---         th, err, again = new_pthread(new_script(source))
+--         th, err, again = pthread.new(source)
 --     end
 --     assert.is_nil(err)
 --     assert.is_true(again)
 -- end
 
 function testcase.join_status()
-    local th = new_pthread(new_script([[
+    local th = pthread.new([[
         local assert = require('assert')
         local th = ...
         assert.match(th, '^pthread.self: ', false)
-    ]]))
+    ]])
 
     -- test that return 'running' when thread is running
     assert.equal(th:status(), 'running')
@@ -78,12 +71,12 @@ function testcase.join_status()
     assert.is_true(th:join(), true)
 
     -- test that return error messaage when thread is failed
-    th = new_pthread(new_script([[
+    th = pthread.new([[
         local function test()
             local foo = bar + 'foo'
         end
         test()
-    ]]))
+    ]])
     assert(iowait.readable(th:fd()))
     assert(th:join())
     local status, errmsg = th:status()
@@ -92,9 +85,9 @@ function testcase.join_status()
 end
 
 function testcase.cancel()
-    local th = new_pthread(new_script([[
+    local th = pthread.new([[
         require('testcase.timer').sleep(1)
-    ]]))
+    ]])
     -- wait for thread to load module
     sleep(.1)
 
@@ -109,9 +102,9 @@ end
 
 function testcase.fd()
     -- test that return fd that can be used to wait for thread termination
-    local th = new_pthread(new_script([[
+    local th = pthread.new([[
         require('testcase.timer').sleep(0.1)
-    ]]))
+    ]])
     local fd = th:fd()
     assert.is_uint(fd)
 
@@ -125,9 +118,9 @@ function testcase.fd()
 end
 
 function testcase.join_even_fd_closed()
-    local th = new_pthread(new_script([[
+    local th = pthread.new([[
         require('testcase.timer').sleep(0.1)
-    ]]))
+    ]])
     close(th:fd())
     sleep(0.2)
 
