@@ -12,9 +12,6 @@ endif
 
 all: $(TARGET)
 
-preprocess:
-	lua ./configure.lua
-
 %.o: %.c
 	$(CC) $(CFLAGS) $(WARNINGS) $(COVFLAGS) $(CPPFLAGS) -o $@ -c $<
 
