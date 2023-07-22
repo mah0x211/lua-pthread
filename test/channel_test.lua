@@ -1,5 +1,4 @@
 local testcase = require('testcase')
-local errno = require('errno')
 local iowait = require('io.wait')
 local new_pthread = require('pthread').new
 local new_channel = require('pthread').channel
@@ -102,12 +101,14 @@ function testcase.push_maxitem()
     -- test that create a new pthread.channel with maxitem
     local ch = new_channel(2)
     for i = 1, 3 do
-        local ok, err = ch:push(i)
+        local ok, err, again = ch:push(i)
         if i < 3 then
             assert(ok, err)
+            assert.is_nil(again)
         else
             assert.is_false(ok)
-            assert.equal(err.type, errno.ENOBUFS)
+            assert.is_true(again)
+            assert.is_nil(err)
         end
     end
 end
@@ -117,14 +118,16 @@ function testcase.push_maxsize()
     local ch = new_channel(nil, 100)
     local nitem = 0
     for _ = 1, 10 do
-        local ok, err = ch:push('hello')
+        local ok, err, again = ch:push('hello')
         if ok then
             assert.is_true(ok)
             assert.is_nil(err)
+            assert.is_nil(again)
             nitem = nitem + 1
         else
             assert.is_false(ok)
-            assert.equal(err.type, errno.ENOBUFS)
+            assert.is_nil(err)
+            assert.is_true(again)
             assert.equal(ch:len(), nitem)
             assert.less_or_equal(ch:size(), 100)
             break

@@ -184,16 +184,26 @@ static int push_lua(lua_State *L)
     }
 
     // push a value to queue
-    if (queue_push(ch->queue, item, len) != 0) {
+    switch (queue_push(ch->queue, item, len)) {
+    case -1:
         // failed to push a value
         free(item);
         lua_pushboolean(L, 0);
         lua_errno_new(L, errno, NULL);
         return 2;
-    }
 
-    lua_pushboolean(L, 1);
-    return 1;
+    case 0:
+        // queue is full
+        free(item);
+        lua_pushboolean(L, 0);
+        lua_pushnil(L);
+        lua_pushboolean(L, 1);
+        return 3;
+
+    default:
+        lua_pushboolean(L, 1);
+        return 1;
+    }
 }
 
 static int fd_lua(lua_State *L)
