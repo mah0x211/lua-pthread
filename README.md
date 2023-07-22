@@ -92,7 +92,7 @@ wait for thread termination.
 - `again:boolean`: `true` if the thread has not yet terminated.
 
 
-## ok, err, again = pthread:cancel()
+## ok, err = pthread:cancel()
 
 cancel execution of a thread.
 
