@@ -1,7 +1,8 @@
+require('luacov')
 local testcase = require('testcase')
 local iowait = require('io.wait')
 local new_pthread = require('pthread').new
-local new_channel = require('pthread').channel
+local new_channel = require('pthread.channel').new
 
 function testcase.create_channel()
     -- test that create a new pthread.channel
@@ -50,7 +51,7 @@ function testcase.push()
 
     -- test that throws an error if push no value
     err = assert.throws(ch.push, ch)
-    assert.match(err, 'no value')
+    assert.match(err, 'unsupported value type: nil')
     assert.equal(ch:len(), len)
 end
 
@@ -169,10 +170,11 @@ end
 function testcase.pass_channel_to_thread()
     -- test that communicate between threads via channel
     local ch = new_channel()
-    local th = new_pthread([[
+    local th = assert(new_pthread([[
         local th, ch = ...
         assert(ch:push('hello'))
-    ]], ch)
+        require('testcase.timer').sleep(.1)
+    ]], ch))
     -- confirm that reference count is increased
     assert.equal(ch:nref(), 2)
 

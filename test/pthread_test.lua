@@ -1,3 +1,4 @@
+require('luacov')
 local testcase = require('testcase')
 local sleep = require('testcase.timer').sleep
 local close = require('testcase.close')

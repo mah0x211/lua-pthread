@@ -28,7 +28,7 @@
 
 static int join_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
     int rc         = 0;
 
     if (th->pipefd[0] == -1) {
@@ -102,7 +102,7 @@ FORCE_JOIN:
 
 static int cancel_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
     int rc         = pthread_cancel(th->id);
 
     if (rc == 0) {
@@ -117,7 +117,7 @@ static int cancel_lua(lua_State *L)
 
 static int status_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
 
     if (th->pipefd[0] != -1) {
         lua_pushstring(L, "running");
@@ -142,20 +142,20 @@ static int status_lua(lua_State *L)
 
 static int fd_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
     lua_pushinteger(L, th->pipefd[0]);
     return 1;
 }
 
 static int tostring_lua(lua_State *L)
 {
-    lua_pushfstring(L, LPTHREAD_MT ": %p", lua_touserdata(L, 1));
+    lua_pushfstring(L, LPTHREAD_THREAD_MT ": %p", lua_touserdata(L, 1));
     return 1;
 }
 
 static int gc_lua(lua_State *L)
 {
-    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_MT);
+    lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
 
     if (pthread_cancel(th->id) == 0) {
         pthread_join(th->id, NULL);
@@ -176,7 +176,7 @@ static int new_ex(lua_State *L, int with_file)
 
     // arguments must be pthread.channel objects
     for (int i = 2; i <= lua_gettop(L); i++) {
-        luaL_checkudata(L, i, LPTHREAD_CHANNEL_MT);
+        luaL_checkudata(L, i, LPTHREAD_THREAD_QUEUE_MT);
     }
 
     lpthread_t *th = lua_newuserdata(L, sizeof(lpthread_t));
@@ -210,7 +210,7 @@ static int new_ex(lua_State *L, int with_file)
     }
 
     // set metatable
-    luaL_getmetatable(L, LPTHREAD_MT);
+    luaL_getmetatable(L, LPTHREAD_THREAD_MT);
     lua_setmetatable(L, -2);
     return 1;
 
@@ -237,7 +237,7 @@ static int new_lua(lua_State *L)
     return new_ex(L, 0);
 }
 
-LUALIB_API int luaopen_pthread(lua_State *L)
+LUALIB_API int luaopen_pthread_thread(lua_State *L)
 {
     struct luaL_Reg mmethods[] = {
         {"__gc",       gc_lua      },
@@ -253,7 +253,7 @@ LUALIB_API int luaopen_pthread(lua_State *L)
     };
 
     lua_errno_loadlib(L);
-    register_mt(L, LPTHREAD_MT, mmethods, methods);
+    register_mt(L, LPTHREAD_THREAD_MT, mmethods, methods);
 
     // return function table
     lua_createtable(L, 0, 2);
@@ -261,7 +261,7 @@ LUALIB_API int luaopen_pthread(lua_State *L)
     lua_setfield(L, -2, "new");
     lua_pushcfunction(L, new_with_file_lua);
     lua_setfield(L, -2, "new_with_file");
-    luaopen_pthread_channel(L);
-    lua_setfield(L, -2, "channel");
+    luaopen_pthread_queue(L);
+    lua_setfield(L, -2, "queue");
     return 1;
 }

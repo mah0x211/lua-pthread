@@ -1,7 +1,8 @@
-TARGET=pthread.$(LIB_EXTENSION)
+CLIB=thread.$(LIB_EXTENSION)
 SRCS=$(wildcard src/*.c)
 OBJS=$(SRCS:.c=.o)
 GCDAS=$(OBJS:.o=.gcda)
+LUALIB=$(wildcard lib/*.lua)
 INSTALL?=install
 
 ifdef PTHREAD_COVERAGE
@@ -10,15 +11,18 @@ endif
 
 .PHONY: all install
 
-all: $(TARGET)
+all: $(CLIB)
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(WARNINGS) $(COVFLAGS) $(CPPFLAGS) -o $@ -c $<
 
-$(TARGET): $(OBJS)
+$(CLIB): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS) $(PLATFORM_LDFLAGS) $(COVFLAGS)
 
 install:
-	$(INSTALL) -d $(INST_LIBDIR)
-	$(INSTALL) $(TARGET) $(INST_LIBDIR)
-	rm -f $(OBJS) $(TARGET) $(GCDAS)
+	$(INSTALL) -d $(INST_LIBDIR)/pthread/
+	$(INSTALL) $(CLIB) $(INST_LIBDIR)/pthread/
+	$(INSTALL) -d $(INST_LUADIR)/pthread/
+	$(INSTALL) $(LUALIB) $(INST_LUADIR)/pthread/
+	$(INSTALL) pthread.lua $(INST_LUADIR)
+	rm -f $(OBJS) $(CLIB) $(GCDAS)
