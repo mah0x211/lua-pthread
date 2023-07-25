@@ -1,8 +1,8 @@
-require('luacov')
 local testcase = require('testcase')
 local sleep = require('testcase.timer').sleep
 local close = require('testcase.close')
-local pthread = require('pthread')
+local iowait = require('io.wait')
+local pthread = require('pthread.thread')
 
 function testcase.new()
     local srcfile = os.tmpname()
@@ -14,13 +14,13 @@ function testcase.new()
 
     -- test that create a new thread
     local th, err = pthread.new('')
-    assert.match(th, 'pthread: 0x%x+', false)
+    assert.match(th, 'pthread.thread: 0x%x+', false)
     assert.is_nil(err)
 
     -- test that create a new thread with file
     th, err = pthread.new_with_file(srcfile)
     os.remove(srcfile)
-    assert.match(th, 'pthread: 0x%x+', false)
+    assert.match(th, 'pthread.thread: 0x%x+', false)
     assert.is_nil(err)
 
     -- test that return error if failed to create a new thread
@@ -51,16 +51,17 @@ end
 -- end
 
 function testcase.join_status()
-    local th = assert(pthread.new([[
+    local th = pthread.new([[
         local assert = require('assert')
         local th = ...
         assert.match(th, '^pthread.self: ', false)
-    ]]))
+    ]])
 
     -- test that return 'running' when thread is running
     assert.equal(th:status(), 'running')
 
     -- test that join a thread
+    assert(iowait.readable(th:fd()))
     assert(th:join())
 
     -- test that return 'terminated' when thread is terminated
@@ -70,64 +71,64 @@ function testcase.join_status()
     assert.is_true(th:join(), true)
 
     -- test that return error messaage when thread is failed
-    th = assert(pthread.new([[
+    th = pthread.new([[
         local function test()
             local foo = bar + 'foo'
         end
         test()
-    ]]))
+    ]])
+    assert(iowait.readable(th:fd()))
     assert(th:join())
     local status, errmsg = th:status()
     assert.equal(status, 'failed')
     assert.re_match(errmsg, 'attempt to', 'i')
 end
 
-function testcase.join_timeout()
-    local th = assert(pthread.new([[
-        require('testcase.timer').sleep(0.1)
-    ]]))
-
-    -- test that join a thread even if fd is closed
-    local ok, err, timeout = th:join(20)
-    assert.is_false(ok)
-    assert.is_nil(err)
-    assert.is_true(timeout)
-    assert.equal(th:status(), 'running')
-
-    assert(th:join(90))
-    assert.equal(th:status(), 'terminated')
-end
-
-function testcase.join_even_fd_closed()
-    local th = assert(pthread.new([[
-        require('testcase.timer').sleep(0.1)
-    ]]))
-    close(th.thread:fd())
-    sleep(0.2)
-
-    -- test that join a thread even if fd is closed
-    assert(th:join())
-    assert.equal(th:status(), 'terminated')
-end
-
 function testcase.cancel()
-    local th = assert(pthread.new([[
+    local th = pthread.new([[
         require('testcase.timer').sleep(1)
-    ]]))
+    ]])
     -- wait for thread to load module
     sleep(.1)
 
     -- test that cancel a thread
-    local ok, err = th:cancel()
-    assert.is_true(ok)
-    assert.is_nil(err)
+    assert(th:cancel())
+    assert(iowait.readable(th:fd()))
     assert(th:join())
-    -- confirm that status is 'cancelled' when thread is canceled
-    assert.equal(th:status(), 'cancelled')
 
-    -- test that return true even if thread is already canceled
-    ok, err = th:cancel()
-    assert.is_true(ok)
-    assert.is_nil(err)
+    -- test that return 'canceled' when thread is canceled
+    assert.equal(th:status(), 'cancelled')
 end
 
+function testcase.fd()
+    -- test that return fd that can be used to wait for thread termination
+    local th = pthread.new([[
+        require('testcase.timer').sleep(0.1)
+    ]])
+    local fd = th:fd()
+    assert.is_uint(fd)
+
+    -- test that fd can be used to monitor thread termination
+    assert(iowait.readable(fd))
+    assert(th:join())
+    assert.equal(th:status(), 'terminated')
+
+    -- test that return -1 after thread is terminated
+    assert.equal(th:fd(), -1)
+end
+
+function testcase.join_even_fd_closed()
+    local th = pthread.new([[
+        require('testcase.timer').sleep(0.1)
+    ]])
+    close(th:fd())
+    sleep(0.2)
+
+    -- test that join a thread even if fd is closed
+    local ok, err, again = th:join()
+    while again do
+        ok, err, again = th:join()
+    end
+    assert(ok, err)
+    assert.equal(th:status(), 'terminated')
+end

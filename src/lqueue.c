@@ -65,7 +65,7 @@ static int pop_lua(lua_State *L)
     qdata_t *data       = NULL;
 
     errno = 0;
-    if (queue_pop(q->queue, (void *)&data, NULL) != 0) {
+    if (queue_pop(q->queue, (void *)&data) != 0) {
         // got an error
         lua_pushnil(L);
         lua_errno_new(L, errno, NULL);
@@ -206,10 +206,25 @@ static int push_lua(lua_State *L)
     }
 }
 
-static int fd_lua(lua_State *L)
+static int fd_readable_lua(lua_State *L)
 {
     lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
-    int fd              = queue_fd(q->queue);
+    int fd              = queue_fd_readable(q->queue);
+
+    if (fd < 0) {
+        // got an error
+        lua_pushnil(L);
+        lua_errno_new(L, errno, NULL);
+        return 2;
+    }
+    lua_pushinteger(L, fd);
+    return 1;
+}
+
+static int fd_writable_lua(lua_State *L)
+{
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    int fd              = queue_fd_writable(q->queue);
 
     if (fd < 0) {
         // got an error
@@ -306,13 +321,14 @@ void luaopen_pthread_queue(lua_State *L)
         {NULL,         NULL        }
     };
     struct luaL_Reg methods[] = {
-        {"nref", nref_lua},
-        {"len",  len_lua },
-        {"size", size_lua},
-        {"fd",   fd_lua  },
-        {"push", push_lua},
-        {"pop",  pop_lua },
-        {NULL,   NULL    }
+        {"nref",        nref_lua       },
+        {"len",         len_lua        },
+        {"size",        size_lua       },
+        {"fd_readable", fd_readable_lua},
+        {"fd_writable", fd_writable_lua},
+        {"push",        push_lua       },
+        {"pop",         pop_lua        },
+        {NULL,          NULL           }
     };
 
     lua_errno_loadlib(L);

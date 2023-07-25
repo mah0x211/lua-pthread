@@ -25,6 +25,7 @@
  */
 
 #include "lpthread.h"
+#include <assert.h>
 
 static int join_lua(lua_State *L)
 {
@@ -43,6 +44,7 @@ static int join_lua(lua_State *L)
 
 RETRY:
     len = read(th->pipefd[0], buf, sizeof(buf));
+    assert(len >= -1 && len <= 1);
     switch (len) {
     case -1:
         // got error
@@ -60,28 +62,19 @@ RETRY:
         }
         lua_pushboolean(L, 0);
         lua_errno_new(L, errno, NULL);
-        lua_pushnil(L);
-        return 3;
+        return 2;
 
     case 0:
         return luaL_error(
             L, "the pipe for inter-thread communication was closed for "
                "unknown reasons.");
 
-    case 1:
-        // received the termination message from thread
-        if (*buf == '0') {
-            break;
-        }
-
     default:
-        return luaL_error(
-            L, "invalid thread termination message received: %d %c", len, *buf);
-    }
-
-    if (th->status == THREAD_RUNNING) {
-        return luaL_error(L, "thread termination message received, but thread "
-                             "status is still running.");
+        // received the termination message from thread
+        assert(*buf == '0');
+        // thread termination message received, but thread status is still
+        // running.
+        assert(th->status != THREAD_RUNNING);
     }
 
 FORCE_JOIN:
@@ -103,7 +96,7 @@ FORCE_JOIN:
 static int cancel_lua(lua_State *L)
 {
     lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
-    int rc         = pthread_cancel(th->id);
+    int rc = (th->status == THREAD_RUNNING) ? pthread_cancel(th->id) : 0;
 
     if (rc == 0) {
         lua_pushboolean(L, 1);

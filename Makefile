@@ -4,9 +4,12 @@ OBJS=$(SRCS:.c=.o)
 GCDAS=$(OBJS:.o=.gcda)
 LUALIB=$(wildcard lib/*.lua)
 INSTALL?=install
+DEFINE=
 
 ifdef PTHREAD_COVERAGE
 COVFLAGS=--coverage
+else
+DEFINE=-DNDEBUG
 endif
 
 .PHONY: all install
@@ -14,7 +17,7 @@ endif
 all: $(CLIB)
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(WARNINGS) $(COVFLAGS) $(CPPFLAGS) -o $@ -c $<
+	$(CC) $(CFLAGS) $(WARNINGS) $(COVFLAGS) $(CPPFLAGS) $(DEFINE) -o $@ -c $<
 
 $(CLIB): $(OBJS)
 	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS) $(PLATFORM_LDFLAGS) $(COVFLAGS)

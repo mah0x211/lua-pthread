@@ -6,5 +6,6 @@ include_files = {
 }
 ignore = {
     'assert',
+    '631',
 }
 

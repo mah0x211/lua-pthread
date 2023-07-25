@@ -54,9 +54,20 @@ typedef struct queue_t {
     size_t maxsize;
     size_t totalsize;
     int refcnt;
-    // NOTE: pipefd[2] is used that notify a queue is available.
-    // queue_push() writes a message to pipe if data is successfully pushed.
-    int pipefd[2];
+
+#define QUEUE_STATUS_READABLE 0x01
+#define QUEUE_STATUS_WRITABLE 0x02
+    // NOTE: status flag to indicate the queue is available to readable and
+    // writable.
+    // the QUEUE_STATUS_READABLE flag will be set when the queue is available to
+    // readable.
+    // the QUEUE_STATUS_WRITABLE flag will be set when the queue is available to
+    // writable.
+    int status;
+    // NOTE: the following pipes are used to check whether the queue is readable
+    // or writable by select(), poll(), epoll(), etc.
+    int pipefd_readable[2];
+    int pipefd_writable[2];
     queue_item_t *head;
     queue_item_t *tail;
 } queue_t;
@@ -122,13 +133,22 @@ ssize_t queue_len(queue_t *queue);
 ssize_t queue_size(queue_t *queue);
 
 /**
- * @brief queue_fd
+ * @brief queue_fd_readable
  *  Get a file descriptor to wait for the queue to become available for reading.
  *  You can use this file descriptor with select(), poll(), epoll(), etc.
  * @param queue The queue object.
  * @return int The file descriptor, <0 means error and errno is set to indicate
  */
-int queue_fd(queue_t *queue);
+int queue_fd_readable(queue_t *queue);
+
+/**
+ * @brief queue_fd_writable
+ *  Get a file descriptor to wait for the queue to become available for writing.
+ *  You can use this file descriptor with select(), poll(), epoll(), etc.
+ * @param queue The queue object.
+ * @return int The file descriptor, <0 means error and errno is set to indicate
+ */
+int queue_fd_writable(queue_t *queue);
 
 /**
  * @brief queue_push
@@ -149,11 +169,9 @@ int queue_push(queue_t *queue, void *data, size_t size);
  * descriptor returned by queue_fd().
  * @param queue The queue object.
  * @param data The data to be returned.
- * @param size The size of the data. If specified NULL, the size is not
- * returned.
  * @return int 0 on success, otherwise errno is set to indicate the error.
  */
-int queue_pop(queue_t *queue, void **data, size_t *size);
+int queue_pop(queue_t *queue, void **data);
 
 // /**
 //  * @brief queue_head

@@ -23,6 +23,11 @@
 local select = select
 local tostring = tostring
 local unpack = unpack or table.unpack
+local wait = require('io.wait')
+local io_wait_readable = wait.readable
+local poll = require('gpoll')
+local pollable = poll.pollable
+local poll_readable = poll.readable
 local new_thread = require('pthread.thread').new
 local new_thread_with_file = require('pthread.thread').new_with_file
 local instanceof = require('metamodule').instanceof
@@ -68,26 +73,30 @@ function Pthread:init(newfn, src, ...)
 end
 
 --- join
+--- @param msec? integer
 --- @return boolean ok
 --- @return any err
---- @return boolean? again
-function Pthread:join()
+--- @return boolean? timeout
+function Pthread:join(msec)
     local ok, err, again = self.thread:join()
-    if not ok then
-        return false, err, again
+    if again then
+        -- wait until the thread terminates
+        local wait_readable = pollable() and poll_readable or io_wait_readable
+        ok, err, again = wait_readable(self.thread:fd(), msec)
+        if not ok then
+            return false, err, again
+        end
+        ok, err = self.thread:join()
     end
-    return true
+
+    return ok, err
 end
 
 --- cancel
 --- @return boolean ok
 --- @return any err
 function Pthread:cancel()
-    local ok, err = self.thread:cancel()
-    if not ok then
-        return false, err
-    end
-    return true
+    return self.thread:cancel()
 end
 
 --- status
@@ -95,12 +104,6 @@ end
 --- @return string errmsg
 function Pthread:status()
     return self.thread:status()
-end
-
---- fd
---- @return integer fd
-function Pthread:fd()
-    return self.thread:fd()
 end
 
 Pthread = require('metamodule').new(Pthread)
