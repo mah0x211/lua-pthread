@@ -148,7 +148,7 @@ print('done')
 ```
 
 
-## ch, err = pthread.channel( [maxitem [, maxsize]] )
+## ch, err = channel.new( [maxitem [, maxsize]] )
 
 create a `pthread.channel` object.
 
@@ -189,27 +189,18 @@ local th = pthread.new([[
 print(ch:nref()) -- 2
 
 -- get data from channel until timeout
-local data, err, again = ch:pop()
-while again do
-    data, err, again = ch:pop()
-end
-assert(data, err)
+local data = assert(ch:pop())
 print(data) -- 'hello from thread'
 
 -- wait for thread termination
-local ok
-ok, err, again = th:join()
-while again do
-    ok, err, again = th:join()
-end
-assert(ok, err)
+assert(th:join())
 
 -- show the number of references to the channel
 print(ch:nref()) -- 1
 ```
 
 
-## nref, err = pthread.channel:nref()
+## nref, err = channel:nref()
 
 get the number of references to the channel.
 
@@ -219,7 +210,7 @@ get the number of references to the channel.
 - `err:any`: error object.
 
 
-## len, err = pthread.channel:len()
+## len, err = channel:len()
 
 get the number of items in the channel.
 
@@ -229,7 +220,7 @@ get the number of items in the channel.
 - `err:any`: error object.
 
 
-## size, err = pthread.channel:size()
+## size, err = channel:size()
 
 get the used memory size of the channel.
 
@@ -239,7 +230,7 @@ get the used memory size of the channel.
 - `err:any`: error object.
 
 
-## ok, err, again = pthread.channel:push( value [, msec] )
+## ok, err, again = channel:push( value [, msec] )
 
 push the value to the channel. if the channel is full, wait until the value is popped from the channel in the specified timeout `msec`.
 
@@ -252,10 +243,10 @@ push the value to the channel. if the channel is full, wait until the value is p
 
 - `ok:boolean`: `true` on success.
 - `err:any`: error object.
-- `again:boolean`: `true` if the channel is full.
+- `again:boolean`: `true` if the channel is full and the timeout has expired.
 
 
-## value, err, again = pthread.channel:pop( [msec] )
+## value, err, again = channel:pop( [msec] )
 
 pop the value from the channel. if the channel is empty, wait until the value is pushed to the channel in the specified timeout `msec`.
 
@@ -267,5 +258,5 @@ pop the value from the channel. if the channel is empty, wait until the value is
 
 - `value:any`: oldest value in the channel.
 - `err:any`: error object.
-- `again:boolean`: `true` if the channel is empty.
+- `again:boolean`: `true` if the channel is empty and the timeout has expired.
 
