@@ -151,7 +151,8 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
     q->status         = 0;
     pthread_mutex_init(&q->mutex, NULL);
 
-    if (q->totalitem < q->maxitem && notify_writable(q) != 0) {
+    if ((q->maxitem == 0 || q->totalitem < q->maxitem) &&
+        notify_writable(q) != 0) {
         // failed to notify writable
         queue_unref(q);
         return NULL;

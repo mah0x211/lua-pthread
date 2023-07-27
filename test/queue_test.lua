@@ -5,9 +5,12 @@ local new_queue = require('pthread.thread').queue
 
 function testcase.create_queue()
     -- test that create a new pthread.thread.queue
-    local ch = new_queue()
-    assert.match(ch, '^pthread.thread.queue: 0x%x+', false)
-    assert.equal(ch:nref(), 1)
+    local q = new_queue()
+    assert.match(q, '^pthread.thread.queue: 0x%x+', false)
+    assert.equal(q:nref(), 1)
+
+    -- test that can push values
+    assert.is_true(iowait.readable(q:fd_writable(), 10))
 end
 
 function testcase.push()
