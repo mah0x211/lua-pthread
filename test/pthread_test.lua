@@ -17,16 +17,44 @@ function testcase.new()
     assert.match(th, 'pthread: 0x%x+', false)
     assert.is_nil(err)
 
-    -- test that create a new thread with file
-    th, err = pthread.new_with_file(srcfile)
-    os.remove(srcfile)
-    assert.match(th, 'pthread: 0x%x+', false)
-    assert.is_nil(err)
-
     -- test that return error if failed to create a new thread
     th, err = pthread.new('function() do end')
     assert.is_nil(th)
     assert.re_match(err, 'invalid', 'i')
+end
+
+function testcase.new_with_func()
+    -- test that create a new thread with function
+    local th, err = pthread.new_with_func(function(th)
+        -- this function is called in a new thread and shares nothing with the main thread
+        local assert = require('assert')
+        assert.match(th, '^pthread%.self: ', false)
+    end)
+    assert.match(th, 'pthread: 0x%x+', false)
+    assert.is_nil(err)
+    assert(th:join())
+    local status, errmsg = th:status()
+    assert.equal(status, 'terminated')
+    assert.is_nil(errmsg)
+
+    -- test that throws and error if argument is not a function
+    err = assert.throws(pthread.new_with_func, {})
+    assert.match(err, 'function expected,')
+end
+
+function testcase.new_with_file()
+    local srcfile = os.tmpname()
+    do
+        local f = assert(io.open(srcfile, 'w'))
+        assert(f:write(''))
+        assert(f:close())
+    end
+
+    -- test that create a new thread with file
+    local th, err = pthread.new_with_file(srcfile)
+    os.remove(srcfile)
+    assert.match(th, 'pthread: 0x%x+', false)
+    assert.is_nil(err)
 end
 
 --

@@ -22,6 +22,7 @@
 --- assign to local
 local select = select
 local tostring = tostring
+local dump = string.dump
 local unpack = unpack or table.unpack
 local wait = require('io.wait')
 local io_wait_readable = wait.readable
@@ -118,6 +119,14 @@ local function new_with_file(filename, ...)
     return Pthread(new_thread_with_file, filename, ...)
 end
 
+--- new_with_func
+--- @param fn fun(pthread.self, ...:pthread.channel)
+--- @param ... pthread.channel
+local function new_with_func(fn, ...)
+    local src = dump(fn)
+    return Pthread(new_thread, src, ...)
+end
+
 --- new
 --- @param src string
 --- @param ... pthread.channel
@@ -130,5 +139,6 @@ end
 
 return {
     new = new,
+    new_with_func = new_with_func,
     new_with_file = new_with_file,
 }

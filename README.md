@@ -71,6 +71,34 @@ print('done')
 ```
 
 
+## th, err, again = pthread.new_with_func( fn [, ch, ...] )
+
+executes a `fn` function on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
+
+**NOTE**
+
+this function is equivalent to the following code.
+
+```lua
+local pthread = require('pthread')
+local th, err, again = pthread.new(string.dump(function(...)
+    print(...)
+end))
+```
+
+**Parameters**
+
+- `fn:function`: the function to run on the created thread.
+- `ch:pthread.channel`: `pthread.channel` arguments to pass to the script.
+
+**Returns**
+
+- `th:pthread`: `pthread` object.
+- `err:any`: error object.
+- `again:boolean`: `true` if `pthread_create` return `EAGAIN` error.
+- `errno:number`: error number.
+
+
 ## th, err, again = pthread.new_with_file( filename [, ch, ...] )
 
 executes a `filename` script on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
