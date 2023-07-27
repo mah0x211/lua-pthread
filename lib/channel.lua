@@ -26,9 +26,7 @@ local tostring = tostring
 local floor = math.floor
 local rawequal = rawequal
 local gettime = require('time.clock').gettime --- @type fun():number
-local wait = require('io.wait')
-local io_wait_readable = wait.readable
-local io_wait_writable = wait.writable
+local io_wait_readable = require('io.wait').readable
 local poll = require('gpoll')
 local pollable = poll.pollable
 local poll_readable = poll.readable
@@ -105,7 +103,7 @@ function Channel:push(value, msec)
 
     local ok, err, again = self.queue:push(value)
     if again then
-        local wait_writable = pollable() and poll.writable or io_wait_writable
+        local wait_writable = pollable() and poll.readable or io_wait_readable
         local deadline = msec and gettime() + (msec > 0 and msec / 1000 or 0)
 
         while again do
