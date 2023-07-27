@@ -165,7 +165,8 @@ static int gc_lua(lua_State *L)
 
 static int new_ex(lua_State *L, int with_file)
 {
-    const char *src = luaL_checkstring(L, 1);
+    size_t len      = 0;
+    const char *src = luaL_checklstring(L, 1, &len);
 
     // arguments must be pthread.channel objects
     for (int i = 2; i <= lua_gettop(L); i++) {
@@ -189,7 +190,7 @@ static int new_ex(lua_State *L, int with_file)
     }
 
     // create thread
-    errno = lpthread_self_start(L, th, src, with_file);
+    errno = lpthread_self_start(L, th, src, len, with_file);
     if (errno != 0) {
         lua_settop(L, 0);
         if (errno == EAGAIN) {

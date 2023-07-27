@@ -172,8 +172,24 @@ static int traceback(lua_State *L)
 #endif
 }
 
+typedef struct {
+    const char *src;
+    size_t len;
+} read_ctx_t;
+
+static const char *read_script(lua_State *L, void *data, size_t *size)
+{
+    (void)L;
+    read_ctx_t *ctx = (read_ctx_t *)data;
+    const char *src = ctx->src;
+    *size           = ctx->len;
+    ctx->src        = NULL;
+    ctx->len        = 0;
+    return src;
+}
+
 int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
-                        int with_file)
+                        size_t len, int with_file)
 {
     // create thread state
     lua_State *thL = luaL_newstate();
@@ -193,9 +209,23 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
     // add traceback function
     lua_pushcfunction(thL, traceback);
 
-    // load script or script file that runs on thread
     errno = 0;
-    rc    = (with_file) ? luaL_loadfile(thL, src) : luaL_loadstring(thL, src);
+    if (with_file) {
+        // load script file
+        rc = luaL_loadfile(thL, src);
+    } else {
+        // load script
+        read_ctx_t ctx = {
+            .src = src,
+            .len = len,
+        };
+#if LUA_VERSION_NUM >= 502
+        rc = lua_load(thL, read_script, &ctx, NULL, NULL);
+#else
+        rc = lua_load(thL, read_script, &ctx, NULL);
+#endif
+    }
+
     if (rc != 0) {
         errno = (rc == LUA_ERRMEM) ? ENOMEM : EINVAL;
         goto FAIL_LUA;
@@ -213,13 +243,13 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
 
     rc = lua_pcall(thL, nchan, LUA_MULTRET, 1);
     if (rc != 0) {
-        size_t len         = 0;
         const char *errmsg = NULL;
         int errnum         = 0;
 
         errno = (rc == LUA_ERRMEM) ? ENOMEM : (errno) ? errno : EINVAL;
 
 FAIL_LUA:
+        len    = 0;
         errnum = errno;
         errmsg = lua_tolstring(thL, -1, &len);
         if (len > sizeof(th->errmsg) - 1) {
