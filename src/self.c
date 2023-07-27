@@ -94,23 +94,43 @@ static int new_pthread_self(lua_State *L)
         {NULL, NULL}
     };
     int nchan = lua_gettop(L);
+    int rc    = 0;
 
     register_mt(L, PTHREAD_SELF_MT, mmethods, methods);
 
-    // convert lightuserdata arguments to pthread.channel objects
+    // convert lightuserdata arguments to pthread.thread.queue objects
     for (int i = 1; i <= nchan; i++) {
         luaL_checktype(L, i, LUA_TLIGHTUSERDATA);
-        queue_t *q             = (queue_t *)lua_topointer(L, i);
-        lpthread_channel_t *ch = lua_newuserdata(L, sizeof(lpthread_channel_t));
+        queue_t *q           = (queue_t *)lua_topointer(L, i);
+        lpthread_queue_t *lq = lua_newuserdata(L, sizeof(lpthread_queue_t));
         if (queue_ref(q) != 0) {
             return luaL_error(L,
                               "failed to queue_ref() in new_pthread_self(): %s",
                               strerror(errno));
         }
-        ch->queue = q;
-        luaL_getmetatable(L, LPTHREAD_CHANNEL_MT);
+        lq->queue = q;
+        luaL_getmetatable(L, LPTHREAD_THREAD_QUEUE_MT);
         lua_setmetatable(L, -2);
         lua_replace(L, i);
+    }
+
+    // wrap the pthread.thread.queue object in the pthread.channel object
+    rc = luaL_dostring(L,
+                       "local select = select\n"
+                       "local unpack = unpack or table.unpack\n"
+                       "local wrap_channel = require('pthread.channel').wrap\n"
+                       "local qlist = {...}\n"
+                       "for i = 1, select('#', ...) do\n"
+                       "    local q = qlist[i]\n"
+                       "    qlist[i] = wrap_channel(q)\n"
+                       "end\n"
+                       "return unpack(qlist)\n");
+    if (rc != 0) {
+        errno = ECANCELED;
+        return luaL_error(L,
+                          "failed to wrap the pthread.thread.queue object in "
+                          "the pthread.channel: %s",
+                          lua_tostring(L, -1));
     }
 
     // create pthread.self
@@ -163,7 +183,8 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
     // open standard libraries
     luaL_openlibs(thL);
     // open pthread module
-    int rc = luaL_dostring(thL, "require('pthread')");
+    int rc = luaL_dostring(thL, "require('pthread')\n"
+                                "require('pthread.channel')");
     if (rc != 0) {
         errno = (rc == LUA_ERRMEM) ? ENOMEM : ECANCELED;
         goto FAIL_LUA;
@@ -185,25 +206,29 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
     // push queue_t as lightuserdata for passing to new_pthread_self
     int nchan = lua_gettop(L) - 2;
     for (int i = 0; i < nchan; i++) {
-        lpthread_channel_t *ch = lua_touserdata(L, i + 2);
-        lua_pushlightuserdata(thL, ch->queue);
+        lpthread_queue_t *lq =
+            luaL_checkudata(L, i + 2, LPTHREAD_THREAD_QUEUE_MT);
+        lua_pushlightuserdata(thL, lq->queue);
     }
 
     rc = lua_pcall(thL, nchan, LUA_MULTRET, 1);
     if (rc != 0) {
         size_t len         = 0;
         const char *errmsg = NULL;
+        int errnum         = 0;
 
-        errno = (rc == LUA_ERRMEM) ? ENOMEM : EINVAL;
+        errno = (rc == LUA_ERRMEM) ? ENOMEM : (errno) ? errno : EINVAL;
 
 FAIL_LUA:
+        errnum = errno;
         errmsg = lua_tolstring(thL, -1, &len);
         if (len > sizeof(th->errmsg) - 1) {
             len = sizeof(th->errmsg) - 1;
         }
         memcpy(th->errmsg, errmsg, len);
         lua_close(thL);
-        return errno;
+        errno = errnum;
+        return errnum;
     }
 
     lpthread_self_t *self = luaL_checkudata(thL, -(1 + nchan), PTHREAD_SELF_MT);

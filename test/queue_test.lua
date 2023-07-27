@@ -1,18 +1,17 @@
-require('luacov')
 local testcase = require('testcase')
-local nanotime = require('testcase.timer').nanotime
-local new_pthread = require('pthread').new
-local new_channel = require('pthread.channel').new
+local iowait = require('io.wait')
+local new_pthread = require('pthread.thread').new
+local new_queue = require('pthread.thread').queue
 
-function testcase.create_channel()
-    -- test that create a new pthread.channel
-    local ch = new_channel()
-    assert.match(ch, '^pthread.channel: 0x%x+', false)
+function testcase.create_queue()
+    -- test that create a new pthread.thread.queue
+    local ch = new_queue()
+    assert.match(ch, '^pthread.thread.queue: 0x%x+', false)
     assert.equal(ch:nref(), 1)
 end
 
 function testcase.push()
-    local ch = new_channel()
+    local ch = new_queue()
 
     -- test that push values
     for i, v in ipairs({
@@ -51,21 +50,61 @@ function testcase.push()
 
     -- test that throws an error if push no value
     err = assert.throws(ch.push, ch)
-    assert.match(err, 'unsupported value type: nil')
+    assert.match(err, 'no value')
     assert.equal(ch:len(), len)
 end
 
+function testcase.fd_wait()
+    local ch = new_queue()
+
+    -- test that return fd of channel that can be used with iowait.readable
+    local fd = assert(ch:fd_readable())
+    assert.is_uint(fd)
+
+    -- test that timeout if channel is empty
+    local ok, err, again = iowait.readable(fd, 100)
+    assert.is_false(ok)
+    assert.is_nil(err)
+    assert.is_true(again)
+
+    -- test that will be readable if push a value
+    assert(ch:push('hello'))
+    assert(ch:push('world'))
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_true(ok)
+    assert.is_nil(err)
+    assert.is_nil(again)
+
+    -- test that still be readable if queue is not empty
+    assert.equal(ch:pop(), 'hello')
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_true(ok)
+    assert.is_nil(err)
+    assert.is_nil(again)
+
+    -- test that timeout after pop all values
+    assert.equal(ch:pop(), 'world')
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_false(ok)
+    assert.is_nil(err)
+    assert.is_true(again)
+
+    -- test that it will be readable again if push a value
+    assert(ch:push('hello'))
+    ok, err, again = iowait.readable(fd, 100)
+    assert.is_true(ok)
+    assert.is_nil(err)
+    assert.is_nil(again)
+end
+
 function testcase.push_maxitem()
-    -- test that create a new pthread.channel with maxitem
-    local ch = new_channel(2)
+    -- test that create a new pthread.thread.queue with maxitem
+    local ch = new_queue(2)
     for i = 1, 3 do
-        local elapsed = nanotime()
-        local ok, err, again = ch:push(i, 0)
-        elapsed = nanotime() - elapsed
+        local ok, err, again = ch:push(i)
         if i < 3 then
             assert(ok, err)
             assert.is_nil(again)
-            assert.less(elapsed, 0.001)
         else
             assert.is_false(ok)
             assert.is_true(again)
@@ -75,11 +114,11 @@ function testcase.push_maxitem()
 end
 
 function testcase.push_maxsize()
-    -- test that create a new pthread.channel with maxsize
-    local ch = new_channel(nil, 100)
+    -- test that create a new pthread.thread.queue with maxsize
+    local ch = new_queue(nil, 100)
     local nitem = 0
     for _ = 1, 10 do
-        local ok, err, again = ch:push('hello', 10)
+        local ok, err, again = ch:push('hello')
         if ok then
             assert.is_true(ok)
             assert.is_nil(err)
@@ -97,7 +136,7 @@ function testcase.push_maxsize()
 end
 
 function testcase.pop()
-    local ch = new_channel()
+    local ch = new_queue()
     local pushlist = {
         true,
         false,
@@ -118,47 +157,32 @@ function testcase.pop()
     local v, err, again = ch:pop()
     while v ~= nil do
         poplist[#poplist + 1] = v
-        v, err, again = ch:pop(10)
+        v, err, again = ch:pop()
     end
     assert(not err, err)
     assert.is_true(again)
     assert.equal(poplist, pushlist)
     assert.equal(ch:len(), 0)
     assert.equal(ch:size(), 0)
-
-    -- test that pop values with timeout
-    local elapsed = nanotime()
-    v, err, again = ch:pop(0)
-    elapsed = nanotime() - elapsed
-    assert.is_nil(v)
-    assert.is_nil(err)
-    assert.is_true(again)
-    assert.less(elapsed, 0.001)
 end
 
 function testcase.pass_channel_to_thread()
-    -- test that pass channel to thread
-    local ch = new_channel()
-    local th = assert(new_pthread([[
+    -- test that communicate between threads via channel
+    local ch = new_queue()
+    local th = new_pthread([[
         local th, ch = ...
         assert(ch:push('hello'))
-        require('testcase.timer').sleep(.1)
-    ]], ch))
+    ]], ch)
     -- confirm that reference count is increased
     assert.equal(ch:nref(), 2)
 
     -- test that get value from channel that pushed by thread
+    assert(iowait.readable(ch:fd_readable()))
     local data = assert(ch:pop())
     assert.equal(data, 'hello')
 
     -- test that reference count is decreased after thread is finished
+    assert(iowait.readable(th:fd()))
     assert(th:join())
     assert.equal(ch:nref(), 1)
 end
-
-function testcase.cannot_pass_invalid_channel_to_thread()
-    -- test that pass invalid channel to thread
-    local err = assert.throws(new_pthread, [[]], {})
-    assert.match(err, 'expected pthread.channel,')
-end
-

@@ -38,8 +38,8 @@
 // libraries
 #include "queue.h"
 
-#define LPTHREAD_MT         "pthread"
-#define LPTHREAD_CHANNEL_MT "pthread.channel"
+#define LPTHREAD_THREAD_MT       "pthread.thread"
+#define LPTHREAD_THREAD_QUEUE_MT "pthread.thread.queue"
 
 typedef enum {
     THREAD_RUNNING,
@@ -57,9 +57,9 @@ typedef struct {
 
 typedef struct {
     queue_t *queue;
-} lpthread_channel_t;
+} lpthread_queue_t;
 
-void luaopen_pthread_channel(lua_State *L);
+void luaopen_pthread_queue(lua_State *L);
 
 int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
                         int with_file);

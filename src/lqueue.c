@@ -61,11 +61,11 @@ static void delete_queue_data(void *data, void *arg)
 
 static int pop_lua(lua_State *L)
 {
-    lpthread_channel_t *ch = luaL_checkudata(L, 1, LPTHREAD_CHANNEL_MT);
-    qdata_t *data          = NULL;
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    qdata_t *data       = NULL;
 
     errno = 0;
-    if (queue_pop(ch->queue, (void *)&data, NULL) != 0) {
+    if (queue_pop(q->queue, (void *)&data) != 0) {
         // got an error
         lua_pushnil(L);
         lua_errno_new(L, errno, NULL);
@@ -113,9 +113,9 @@ static int pop_lua(lua_State *L)
 
 static int push_lua(lua_State *L)
 {
-    lpthread_channel_t *ch = luaL_checkudata(L, 1, LPTHREAD_CHANNEL_MT);
-    qdata_t data           = {0};
-    size_t len             = 0;
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    qdata_t data        = {0};
+    size_t len          = 0;
 
     switch (lua_type(L, 2)) {
     case LUA_TBOOLEAN:
@@ -184,7 +184,7 @@ static int push_lua(lua_State *L)
     }
 
     // push a value to queue
-    switch (queue_push(ch->queue, item, len)) {
+    switch (queue_push(q->queue, item, len)) {
     case -1:
         // failed to push a value
         free(item);
@@ -206,10 +206,25 @@ static int push_lua(lua_State *L)
     }
 }
 
-static int fd_lua(lua_State *L)
+static int fd_readable_lua(lua_State *L)
 {
-    lpthread_channel_t *ch = luaL_checkudata(L, 1, LPTHREAD_CHANNEL_MT);
-    int fd                 = queue_fd(ch->queue);
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    int fd              = queue_fd_readable(q->queue);
+
+    if (fd < 0) {
+        // got an error
+        lua_pushnil(L);
+        lua_errno_new(L, errno, NULL);
+        return 2;
+    }
+    lua_pushinteger(L, fd);
+    return 1;
+}
+
+static int fd_writable_lua(lua_State *L)
+{
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    int fd              = queue_fd_writable(q->queue);
 
     if (fd < 0) {
         // got an error
@@ -223,8 +238,8 @@ static int fd_lua(lua_State *L)
 
 static int size_lua(lua_State *L)
 {
-    lpthread_channel_t *ch = luaL_checkudata(L, 1, LPTHREAD_CHANNEL_MT);
-    ssize_t size           = queue_size(ch->queue);
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    ssize_t size        = queue_size(q->queue);
 
     if (size < 0) {
         // got an error
@@ -238,8 +253,8 @@ static int size_lua(lua_State *L)
 
 static int len_lua(lua_State *L)
 {
-    lpthread_channel_t *ch = luaL_checkudata(L, 1, LPTHREAD_CHANNEL_MT);
-    ssize_t len            = queue_len(ch->queue);
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    ssize_t len         = queue_len(q->queue);
 
     if (len < 0) {
         // got an error
@@ -247,14 +262,14 @@ static int len_lua(lua_State *L)
         lua_errno_new(L, errno, NULL);
         return 2;
     }
-    lua_pushinteger(L, queue_len(ch->queue));
+    lua_pushinteger(L, queue_len(q->queue));
     return 1;
 }
 
 static int nref_lua(lua_State *L)
 {
-    lpthread_channel_t *ch = luaL_checkudata(L, 1, LPTHREAD_CHANNEL_MT);
-    int nref               = queue_nref(ch->queue);
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    int nref            = queue_nref(q->queue);
 
     if (nref < 0) {
         // got an error
@@ -268,15 +283,15 @@ static int nref_lua(lua_State *L)
 
 static int tostring_lua(lua_State *L)
 {
-    lua_pushfstring(L, LPTHREAD_CHANNEL_MT ": %p", lua_touserdata(L, 1));
+    lua_pushfstring(L, LPTHREAD_THREAD_QUEUE_MT ": %p", lua_touserdata(L, 1));
     return 1;
 }
 
 static int gc_lua(lua_State *L)
 {
-    lpthread_channel_t *ch = lua_touserdata(L, 1);
-    if (queue_unref(ch->queue) != 0) {
-        perror("failed to queue_unref() in pthread.channel.gc_lua");
+    lpthread_queue_t *q = lua_touserdata(L, 1);
+    if (queue_unref(q->queue) != 0) {
+        perror("failed to queue_unref() in pthread.queue.gc_lua");
     }
     return 0;
 }
@@ -286,19 +301,19 @@ static int new_lua(lua_State *L)
     int maxitem = luaL_optinteger(L, 1, 0);
     int maxsize = luaL_optinteger(L, 2, 0);
 
-    lpthread_channel_t *ch = lua_newuserdata(L, sizeof(lpthread_channel_t));
-    ch->queue = queue_new(maxitem, maxsize, delete_queue_data, NULL);
-    if (!ch->queue) {
+    lpthread_queue_t *q = lua_newuserdata(L, sizeof(lpthread_queue_t));
+    q->queue            = queue_new(maxitem, maxsize, delete_queue_data, NULL);
+    if (!q->queue) {
         lua_pushnil(L);
         lua_errno_new(L, errno, NULL);
         return 2;
     }
-    luaL_getmetatable(L, LPTHREAD_CHANNEL_MT);
+    luaL_getmetatable(L, LPTHREAD_THREAD_QUEUE_MT);
     lua_setmetatable(L, -2);
     return 1;
 }
 
-void luaopen_pthread_channel(lua_State *L)
+void luaopen_pthread_queue(lua_State *L)
 {
     struct luaL_Reg mmethods[] = {
         {"__gc",       gc_lua      },
@@ -306,17 +321,18 @@ void luaopen_pthread_channel(lua_State *L)
         {NULL,         NULL        }
     };
     struct luaL_Reg methods[] = {
-        {"nref", nref_lua},
-        {"len",  len_lua },
-        {"size", size_lua},
-        {"fd",   fd_lua  },
-        {"push", push_lua},
-        {"pop",  pop_lua },
-        {NULL,   NULL    }
+        {"nref",        nref_lua       },
+        {"len",         len_lua        },
+        {"size",        size_lua       },
+        {"fd_readable", fd_readable_lua},
+        {"fd_writable", fd_writable_lua},
+        {"push",        push_lua       },
+        {"pop",         pop_lua        },
+        {NULL,          NULL           }
     };
 
     lua_errno_loadlib(L);
-    register_mt(L, LPTHREAD_CHANNEL_MT, mmethods, methods);
+    register_mt(L, LPTHREAD_THREAD_QUEUE_MT, mmethods, methods);
 
     // return new function
     lua_pushcfunction(L, new_lua);

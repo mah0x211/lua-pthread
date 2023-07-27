@@ -1,0 +1,7 @@
+codefromstrings = false
+runreport = true
+deletestats = true
+modules = {
+    ["pthread"] = "pthread.lua",
+    ["pthread.channel"] = "lib/channel.lua",
+}

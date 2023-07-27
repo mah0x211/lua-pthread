@@ -65,11 +65,8 @@ elseif again then
 end
 
 -- wait for thread termination
-local ok, err, again = th:join()
-while again do
-    ok, err, again = th:join()
-end
-assert(ok, err)
+assert(th:join())
+
 print('done')
 ```
 
@@ -88,9 +85,13 @@ executes a `filename` script on a new posix thread and returns a `pthread` objec
 same as `pthread.new` function.
 
 
-## ok, err, again = pthread:join()
+## ok, err, again = pthread:join( [msec] )
 
-wait for thread termination.
+wait for thread termination. if the thread has not yet terminated, wait until the thread terminates in the specified timeout `msec`.
+
+**Parameters**
+
+- `msec:integer`: timeout in milliseconds. default is `nil` (wait forever).
 
 **Returns**
 
@@ -140,27 +141,11 @@ end
 -- get thread status
 print('thread status:', th:status()) -- 'running'
 -- wait for thread termination
-local ok, err, again = th:join()
-while again do
-    print('thread status:', th:status()) -- 'running'
-    ok, err, again = th:join()
-end
-if err then
-    print(err)
-    return
-end
+assert(th:join())
+
 print('thread status after joined:', th:status()) -- 'terminated'
 print('done')
 ```
-
-
-## fd = pthread:fd()
-
-get the file descriptor of the read end of the pipe that is used to signal the thread termination. you can use this file descriptor with `select` or `poll` function to wait for thread termination.
-
-**Returns**
-
-- `fd:integer`: file descriptor. if `-1` is returned, then the thread has already terminated.
 
 
 ## ch, err = pthread.channel( [maxitem [, maxsize]] )
@@ -189,11 +174,11 @@ the following example shows how to communicate between threads using `pthread.ch
 
 ```lua
 local pthread = require('pthread')
+local channel = require('pthread.channel')
 
-local ch = pthread.channel()
+local ch = channel.new()
 -- show the number of references to the channel
 print(ch:nref()) -- 1
-
 
 -- create a thread with channel argument
 local th = pthread.new([[
@@ -254,27 +239,14 @@ get the used memory size of the channel.
 - `err:any`: error object.
 
 
-## fd, err = pthread.channel:fd()
+## ok, err, again = pthread.channel:push( value [, msec] )
 
-get the file descriptor of the read end of the pipe. you can use this file descriptor with `select` or `poll` function to wait for the channel becomes readable.
-
-**NOTE**
-
-this file descriptor must not be used for other purposes. this file descriptor automatically read and write by the `pthread.channel` object.
-
-**Returns**
-
-- `fd:integer`: file descriptor.
-- `err:any`: error object.
-
-
-## ok, err, again = pthread.channel:push( value )
-
-push the value to the channel.
+push the value to the channel. if the channel is full, wait until the value is popped from the channel in the specified timeout `msec`.
 
 **Parameters**
 
 - `value:boolean|number|string|lightuserdata`: value to push.
+- `msec:integer`: timeout in milliseconds. default is `nil` (wait forever).
 
 **Returns**
 
@@ -283,9 +255,13 @@ push the value to the channel.
 - `again:boolean`: `true` if the channel is full.
 
 
-## value, err, again = pthread.channel:pop()
+## value, err, again = pthread.channel:pop( [msec] )
 
-pop the value from the channel.
+pop the value from the channel. if the channel is empty, wait until the value is pushed to the channel in the specified timeout `msec`.
+
+**Parameters**
+
+- `msec:integer`: timeout in milliseconds. default is `nil` (wait forever).
 
 **Returns**
 

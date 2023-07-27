@@ -24,6 +24,103 @@
 #include <fcntl.h>
 #include <stdio.h>
 
+static inline void close_pipe(int *fds)
+{
+    close(fds[0]);
+    close(fds[1]);
+}
+
+static inline int create_pipe(int *fds)
+{
+    if (pipe(fds) != 0) {
+        return -1;
+    }
+    // set o_cloexec and o_nonblock flags
+    if (fcntl(fds[0], F_SETFD, FD_CLOEXEC) != 0 ||
+        fcntl(fds[0], F_SETFL, O_NONBLOCK) != 0 ||
+        fcntl(fds[1], F_SETFD, FD_CLOEXEC) != 0 ||
+        fcntl(fds[1], F_SETFL, O_NONBLOCK) != 0) {
+        close_pipe(fds);
+        return -1;
+    }
+
+    return 0;
+}
+
+static inline int notify(int fd)
+{
+    int retry = 0;
+RETRY:
+    if (write(fd, "0", 1) == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        if (retry == 0 && errno == EINTR) {
+            retry++;
+            goto RETRY;
+        }
+        return -1;
+    }
+    return 0;
+}
+
+static inline int notify_writable(queue_t *q)
+{
+    if (q->status & QUEUE_STATUS_WRITABLE) {
+        return 0;
+    } else if (notify(q->pipefd_writable[1]) != 0) {
+        return -1;
+    }
+    q->status |= QUEUE_STATUS_WRITABLE;
+    return 0;
+}
+
+static inline int notify_readable(queue_t *q)
+{
+    if (q->status & QUEUE_STATUS_READABLE) {
+        return 0;
+    } else if (notify(q->pipefd_readable[1]) != 0) {
+        return -1;
+    }
+    q->status |= QUEUE_STATUS_READABLE;
+    return 0;
+}
+
+static inline int unnotify(int fd)
+{
+    static char buf[1];
+    int retry = 0;
+RETRY:
+    if (read(fd, buf, sizeof(buf)) == -1 && errno != EAGAIN &&
+        errno != EWOULDBLOCK) {
+        if (retry == 0 && errno == EINTR) {
+            retry++;
+            goto RETRY;
+        }
+        return -1;
+    }
+    return 0;
+}
+
+static inline int unnotify_writable(queue_t *q)
+{
+    if (!(q->status & QUEUE_STATUS_WRITABLE)) {
+        return 0;
+    } else if (unnotify(q->pipefd_writable[0]) != 0) {
+        return -1;
+    }
+    q->status &= ~QUEUE_STATUS_WRITABLE;
+    return 0;
+}
+
+static inline int unnotify_readable(queue_t *q)
+{
+    if (!(q->status & QUEUE_STATUS_READABLE)) {
+        return 0;
+    } else if (unnotify(q->pipefd_readable[0]) != 0) {
+        return -1;
+    }
+    q->status &= ~QUEUE_STATUS_READABLE;
+    return 0;
+}
+
 queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
                    void *arg)
 {
@@ -33,38 +130,32 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
         return NULL;
     }
 
-    // create pipe
-    if (pipe(q->pipefd) != 0) {
+    // create pipe for readable and writable notification
+    if (create_pipe(q->pipefd_readable) != 0) {
         free(q);
         return NULL;
-    }
-    // set o_cloexec and o_nonblock flags
-    if (fcntl(q->pipefd[0], F_SETFD, FD_CLOEXEC) != 0 ||
-        fcntl(q->pipefd[0], F_SETFL, O_NONBLOCK) != 0 ||
-        fcntl(q->pipefd[1], F_SETFD, FD_CLOEXEC) != 0 ||
-        fcntl(q->pipefd[1], F_SETFL, O_NONBLOCK) != 0) {
-        close(q->pipefd[0]);
-        close(q->pipefd[1]);
+    } else if (create_pipe(q->pipefd_writable) != 0) {
         free(q);
+        close_pipe(q->pipefd_readable);
         return NULL;
-    }
-
-    if (maxitem < 0) {
-        maxitem = 0;
-    }
-    if (maxsize < 0) {
-        maxsize = 0;
     }
 
     q->delete_cb     = cb;
     q->delete_cb_arg = arg;
-    q->maxitem       = (size_t)maxitem;
+    q->maxitem       = (size_t)(maxitem > 0) ? maxitem : 0;
     q->totalitem     = 0;
-    q->maxsize       = (size_t)maxsize;
+    q->maxsize       = (size_t)(maxsize > 0) ? maxsize : 0;
     q->totalsize     = 0;
     q->head = q->tail = NULL;
     q->refcnt         = 1;
+    q->status         = 0;
     pthread_mutex_init(&q->mutex, NULL);
+
+    if (q->totalitem < q->maxitem && notify_writable(q) != 0) {
+        // failed to notify writable
+        queue_unref(q);
+        return NULL;
+    }
 
     return q;
 }
@@ -106,8 +197,8 @@ int queue_unref(queue_t *q)
     }
 
     // close pipe
-    close(q->pipefd[0]);
-    close(q->pipefd[1]);
+    close_pipe(q->pipefd_readable);
+    close_pipe(q->pipefd_writable);
 
     pthread_mutex_unlock(&q->mutex);
     pthread_mutex_destroy(&q->mutex);
@@ -145,12 +236,22 @@ ssize_t queue_size(queue_t *q)
     return size;
 }
 
-int queue_fd(queue_t *q)
+int queue_fd_readable(queue_t *q)
 {
     if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
         return -1;
     }
-    int fd = q->pipefd[0];
+    int fd = q->pipefd_readable[0];
+    pthread_mutex_unlock(&q->mutex);
+    return fd;
+}
+
+int queue_fd_writable(queue_t *q)
+{
+    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
+        return -1;
+    }
+    int fd = q->pipefd_writable[0];
     pthread_mutex_unlock(&q->mutex);
     return fd;
 }
@@ -165,6 +266,11 @@ int queue_push(queue_t *q, void *data, size_t size)
         (q->maxsize > 0 &&
          (size > q->maxsize || sizeof(queue_item_t) > q->maxsize - size ||
           q->totalsize > q->maxsize - size - sizeof(queue_item_t)))) {
+        if (unnotify_writable(q) != 0) {
+            // failed to read from pipe
+            pthread_mutex_unlock(&q->mutex);
+            return -1;
+        }
         pthread_mutex_unlock(&q->mutex);
         return 0;
     }
@@ -174,6 +280,14 @@ int queue_push(queue_t *q, void *data, size_t size)
         pthread_mutex_unlock(&q->mutex);
         return -1;
     }
+
+    // notifies the reader when the first item will be pushed
+    if (q->totalitem == 0 && notify_readable(q) != 0) {
+        free(item);
+        pthread_mutex_unlock(&q->mutex);
+        return -1;
+    }
+
     item->data = data;
     item->size = size;
     q->totalitem++;
@@ -187,34 +301,15 @@ int queue_push(queue_t *q, void *data, size_t size)
         q->head = q->tail = item;
     }
 
-    // notify reader when the first item is pushed
-    if (q->totalitem == 1) {
-        int retry = 0;
-
-RETRY:
-        if (write(q->pipefd[1], "0", 1) == -1 && errno != EAGAIN &&
-            errno != EWOULDBLOCK) {
-            if (retry == 0 && errno == EINTR) {
-                retry++;
-                goto RETRY;
-            }
-            pthread_mutex_unlock(&q->mutex);
-            return -1;
-        }
-    }
-
     pthread_mutex_unlock(&q->mutex);
     return 1;
 }
 
-static void *remove_head(queue_t *q, size_t *size)
+static void *remove_head(queue_t *q)
 {
     queue_item_t *item = q->head;
     char *data         = item->data;
 
-    if (size) {
-        *size = item->size;
-    }
     q->totalitem--;
     q->totalsize -= item->size + sizeof(queue_item_t);
 
@@ -229,36 +324,25 @@ static void *remove_head(queue_t *q, size_t *size)
     return data;
 }
 
-int queue_pop(queue_t *q, void **data, size_t *size)
+int queue_pop(queue_t *q, void **data)
 {
     if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
         return -1;
     }
-    while (q->head == NULL) {
+    if (q->head == NULL) {
         pthread_mutex_unlock(&q->mutex);
         return 0;
     }
 
-    *data = remove_head(q, size);
-
-    // consume notification when the last item is popped
-    static char buf[1];
-    if (q->totalitem == 0) {
-        int retry = 0;
-
-RETRY:
-        if (read(q->pipefd[0], buf, sizeof(buf)) == -1 && errno != EAGAIN &&
-            errno != EWOULDBLOCK) {
-            if (retry == 0 && errno == EINTR) {
-                retry++;
-                goto RETRY;
-            }
-            // failed to read from pipe
-            pthread_mutex_unlock(&q->mutex);
-            return -1;
-        }
+    // stops notifying the reader when the last item will be popped and notifies
+    // the writer that the queue is available to writable.
+    if ((q->totalitem == 1 && unnotify_readable(q) != 0) ||
+        notify_writable(q) != 0) {
+        pthread_mutex_unlock(&q->mutex);
+        return -1;
     }
 
+    *data = remove_head(q);
     pthread_mutex_unlock(&q->mutex);
 
     return 0;
