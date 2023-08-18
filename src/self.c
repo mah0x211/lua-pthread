@@ -116,18 +116,27 @@ static int new_pthread_self(lua_State *L)
     }
 
     // wrap the pthread.thread.queue object in the pthread.channel object
-    rc = luaL_dostring(L,
-                       "local select = select\n"
-                       "local unpack = unpack or table.unpack\n"
-                       "local wrap_channel = require('pthread.channel').wrap\n"
-                       "local qlist = {...}\n"
-                       "for i = 1, select('#', ...) do\n"
-                       "    local q = qlist[i]\n"
-                       "    qlist[i] = wrap_channel(q)\n"
-                       "end\n"
-                       "return unpack(qlist)\n");
+    rc = luaL_loadstring(
+        L, "local select = select\n"
+           "local unpack = unpack or table.unpack\n"
+           "local wrap_channel = require('pthread.channel').wrap\n"
+           "local qlist = {...}\n"
+           "for i = 1, select('#', ...) do\n"
+           "    local q = qlist[i]\n"
+           "    qlist[i] = wrap_channel(q)\n"
+           "end\n"
+           "return unpack(qlist)\n");
     if (rc != 0) {
-        errno = ECANCELED;
+        errno = (rc == LUA_ERRMEM) ? ENOMEM : ECANCELED;
+        return luaL_error(L,
+                          "failed to wrap the pthread.thread.queue object in "
+                          "the pthread.channel: %s",
+                          lua_tostring(L, -1));
+    }
+    lua_insert(L, 1);
+    rc = lua_pcall(L, nchan, LUA_MULTRET, 0);
+    if (rc != 0) {
+        errno = (rc == LUA_ERRMEM) ? ENOMEM : ECANCELED;
         return luaL_error(L,
                           "failed to wrap the pthread.thread.queue object in "
                           "the pthread.channel: %s",
@@ -232,7 +241,7 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
         goto FAIL_LUA;
     }
 
-    // create pthread.self and pthread.channel objects
+    // create pthread.self and pthread.channel objects with new_pthread_self
     lua_pushcfunction(thL, new_pthread_self);
     // push queue_t as lightuserdata for passing to new_pthread_self
     int nchan = lua_gettop(L) - 2;
@@ -262,6 +271,7 @@ FAIL_LUA:
         return errnum;
     }
 
+    // new_pthread_self returns pthread.self and pthread.channel objects
     lpthread_self_t *self = luaL_checkudata(thL, -(1 + nchan), PTHREAD_SELF_MT);
     self->lua_status      = -1;
     self->L               = thL;

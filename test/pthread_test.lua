@@ -13,9 +13,17 @@ function testcase.new()
     end
 
     -- test that create a new thread
-    local th, err = pthread.new('')
+    local th, err = pthread.new([[
+        local assert = require('assert')
+        local th = ...
+        assert.match(th, '^pthread%.self: ', false)
+    ]])
     assert.match(th, 'pthread: 0x%x+', false)
     assert.is_nil(err)
+    assert(th:join())
+    local status, errmsg = th:status()
+    assert.equal(status, 'terminated')
+    assert.is_nil(errmsg)
 
     -- test that return error if failed to create a new thread
     th, err = pthread.new('function() do end')
@@ -46,7 +54,11 @@ function testcase.new_with_file()
     local srcfile = os.tmpname()
     do
         local f = assert(io.open(srcfile, 'w'))
-        assert(f:write(''))
+        assert(f:write([[
+            local assert = require('assert')
+            local th = ...
+            assert.match(th, '^pthread%.self: ', false)
+        ]]))
         assert(f:close())
     end
 
@@ -55,6 +67,10 @@ function testcase.new_with_file()
     os.remove(srcfile)
     assert.match(th, 'pthread: 0x%x+', false)
     assert.is_nil(err)
+    assert(th:join())
+    local status, errmsg = th:status()
+    assert.equal(status, 'terminated')
+    assert.is_nil(errmsg)
 end
 
 --
