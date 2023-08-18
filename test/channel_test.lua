@@ -274,7 +274,9 @@ function testcase.pass_channel_to_thread()
     -- test that pass channel to thread
     local ch = new_channel()
     local th = assert(new_pthread([[
+        local assert = require('assert')
         local th, ch = ...
+        assert.match(ch, '^pthread.channel: 0x%x+', false)
         assert(ch:push('hello'))
         require('testcase.timer').sleep(.1)
     ]], ch))
@@ -287,6 +289,9 @@ function testcase.pass_channel_to_thread()
 
     -- test that reference count is decreased after thread is finished
     assert(th:join())
+    local status, errmsg = th:status()
+    assert.equal(status, 'terminated')
+    assert.is_nil(errmsg)
     assert.equal(ch:nref(), 1)
 end
 
