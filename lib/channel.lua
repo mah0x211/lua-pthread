@@ -29,8 +29,13 @@ local gettime = require('time.clock').gettime --- @type fun():number
 local io_wait_readable = require('io.wait').readable
 local poll = require('gpoll')
 local pollable = poll.pollable
-local poll_readable = poll.readable
+local new_readable_event = poll.new_readable_event
+local dispose_event = poll.dispose_event
+local wait_event = poll.wait_event
+
+--- @type fun(maxitem?:integer, maxsize?:integer):(queue:pthread.thread.queue?, err:any)
 local new_queue = require('pthread.thread').queue
+
 --- constants
 local INF_POS = math.huge
 local INF_NEG = -math.huge
@@ -56,6 +61,8 @@ end
 
 --- @class pthread.channel
 --- @field private queue pthread.thread.queue
+--- @field private readable_evid integer?
+--- @field private writable_evid integer?
 local Channel = {}
 
 --- init
@@ -68,7 +75,7 @@ function Channel:init(queue)
         error('queue must be pthread.thread.queue')
     end
 
-    self.queue = queue
+    self.queue = queue --[[@as pthread.thread.queue]]
     return self
 end
 
@@ -76,7 +83,63 @@ end
 --- @return boolean ok
 --- @return any err
 function Channel:close()
+    if self.readable_evid then
+        dispose_event(self.readable_evid)
+    end
+    if self.writable_evid then
+        dispose_event(self.writable_evid)
+    end
     return self.queue:close()
+end
+
+--- wait_readable
+--- @private
+--- @param msec? integer
+--- @return boolean ok
+--- @return any err
+--- @return boolean? timeout
+function Channel:wait_readable(msec)
+    local evid = self.readable_evid
+    if not evid then
+        if not pollable() then
+            return io_wait_readable(self.queue:fd_readable(), msec)
+        end
+
+        local err
+        evid, err = new_readable_event(self.queue:fd_readable())
+        if not evid then
+            return false, err
+        end
+        self.readable_evid = evid
+    end
+
+    -- wait until readable
+    return wait_event(evid, msec)
+end
+
+--- wait_writable
+--- @private
+--- @param msec? integer
+--- @return boolean ok
+--- @return any err
+--- @return boolean? timeout
+function Channel:wait_writable(msec)
+    local evid = self.writable_evid
+    if not evid then
+        if not pollable() then
+            return io_wait_readable(self.queue:fd_writable(), msec)
+        end
+
+        local err
+        evid, err = new_readable_event(self.queue:fd_writable())
+        if not evid then
+            return false, err
+        end
+        self.writable_evid = evid
+    end
+
+    -- wait until writable
+    return wait_event(evid, msec)
 end
 
 --- nref
@@ -111,7 +174,6 @@ function Channel:push(value, msec)
 
     local ok, err, again = self.queue:push(value)
     if again then
-        local wait_writable = pollable() and poll.readable or io_wait_readable
         local deadline = msec and gettime() + (msec > 0 and msec / 1000 or 0)
 
         while again do
@@ -120,7 +182,7 @@ function Channel:push(value, msec)
             end
 
             -- wait for writable
-            ok, err, again = wait_writable(self.queue:fd_writable(), msec)
+            ok, err, again = self:wait_writable(msec)
             if not ok then
                 return false, err, again
             end
@@ -142,7 +204,6 @@ function Channel:pop(msec)
 
     local val, err, again = self.queue:pop()
     if again then
-        local wait_readable = pollable() and poll_readable or io_wait_readable
         local deadline = msec and gettime() + (msec > 0 and msec / 1000 or 0)
 
         while again do
@@ -152,7 +213,7 @@ function Channel:pop(msec)
 
             -- wait for readable
             local ok
-            ok, err, again = wait_readable(self.queue:fd_readable(), msec)
+            ok, err, again = self:wait_readable(msec)
             if not ok then
                 return nil, err, again
             end
