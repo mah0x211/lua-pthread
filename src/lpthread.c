@@ -168,7 +168,7 @@ static int new_ex(lua_State *L, int with_file)
     size_t len      = 0;
     const char *src = luaL_checklstring(L, 1, &len);
 
-    // arguments must be pthread.channel objects
+    // arguments must be pthread.queue objects
     for (int i = 2; i <= lua_gettop(L); i++) {
         luaL_checkudata(L, i, LPTHREAD_THREAD_QUEUE_MT);
     }

@@ -57,6 +57,7 @@ typedef struct {
 
 typedef struct {
     queue_t *queue;
+    int closed;
 } lpthread_queue_t;
 
 void luaopen_pthread_queue(lua_State *L);

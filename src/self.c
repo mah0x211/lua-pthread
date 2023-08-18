@@ -108,7 +108,8 @@ static int new_pthread_self(lua_State *L)
                               "failed to queue_ref() in new_pthread_self(): %s",
                               strerror(errno));
         }
-        lq->queue = q;
+        lq->queue  = q;
+        lq->closed = 0;
         luaL_getmetatable(L, LPTHREAD_THREAD_QUEUE_MT);
         lua_setmetatable(L, -2);
         lua_replace(L, i);
