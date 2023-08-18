@@ -1,8 +1,13 @@
 require('luacov')
 local testcase = require('testcase')
 local nanotime = require('testcase.timer').nanotime
+local gpoll = require('gpoll')
 local new_pthread = require('pthread').new
 local new_channel = require('pthread.channel').new
+
+function testcase.before_each()
+    gpoll.set_poller()
+end
 
 function testcase.create_channel()
     -- test that create a new pthread.channel
@@ -72,6 +77,62 @@ function testcase.push()
     err = assert.throws(ch.push, ch)
     assert.match(err, 'unsupported value type: nil')
     assert.equal(ch:len(), len)
+end
+
+function testcase.push_async()
+    -- test that calls gpoll.new_readable_event and gpoll.wait_event
+    local ch = new_channel(1)
+    assert(ch:push('foo'))
+    local new_readable_called = false
+    local wait_event_called = false
+    gpoll.set_poller({
+        pollable = function()
+            return true
+        end,
+        new_readable_event = function(fd)
+            new_readable_called = true
+            return fd
+        end,
+        wait_event = function(evid)
+            assert.equal(evid, ch.queue:fd_writable())
+            wait_event_called = true
+            return false, 'error wait_event', true
+        end,
+    })
+    local ok, err, timeout = ch:push('foo')
+    assert.is_false(ok)
+    assert.match(err, 'error wait_event')
+    assert.is_true(timeout)
+    assert.is_true(new_readable_called)
+    assert.is_true(wait_event_called)
+    ch:close()
+
+    -- test that gpoll.new_readable_event return error
+    ch = new_channel(1)
+    assert(ch:push('foo'))
+    new_readable_called = false
+    wait_event_called = false
+    gpoll.set_poller({
+        pollable = function()
+            return true
+        end,
+        new_readable_event = function()
+            new_readable_called = true
+            return nil, 'error new_readable_event'
+        end,
+        wait_event = function(evid)
+            assert.equal(evid, ch.queue:fd_writable())
+            wait_event_called = true
+            return false, 'error wait_event', true
+        end,
+    })
+    ok, err, timeout = ch:push('foo')
+    assert.is_false(ok)
+    assert.match(err, 'error new_readable_event')
+    assert.is_nil(timeout)
+    assert.is_true(new_readable_called)
+    assert.is_false(wait_event_called)
+    ch:close()
 end
 
 function testcase.push_maxitem()
@@ -153,6 +214,60 @@ function testcase.pop()
     assert.is_nil(err)
     assert.is_true(again)
     assert.less(elapsed, 0.001)
+end
+
+function testcase.pop_async()
+    -- test that calls gpoll.new_readable_event and gpoll.wait_event
+    local ch = new_channel()
+    local new_readable_called = false
+    local wait_event_called = false
+    gpoll.set_poller({
+        pollable = function()
+            return true
+        end,
+        new_readable_event = function(fd)
+            new_readable_called = true
+            return fd
+        end,
+        wait_event = function(evid)
+            assert.equal(evid, ch.queue:fd_readable())
+            wait_event_called = true
+            return false, 'error wait_event', true
+        end,
+    })
+    local val, err, timeout = ch:pop()
+    assert.is_nil(val)
+    assert.match(err, 'error wait_event')
+    assert.is_true(timeout)
+    assert.is_true(new_readable_called)
+    assert.is_true(wait_event_called)
+    ch:close()
+
+    -- test that gpoll.new_readable_event return error
+    ch = new_channel()
+    new_readable_called = false
+    wait_event_called = false
+    gpoll.set_poller({
+        pollable = function()
+            return true
+        end,
+        new_readable_event = function()
+            new_readable_called = true
+            return nil, 'error new_readable_event'
+        end,
+        wait_event = function(evid)
+            assert.equal(evid, ch.queue:fd_readable())
+            wait_event_called = true
+            return false, 'error wait_event', true
+        end,
+    })
+    val, err, timeout = ch:pop()
+    assert.is_nil(val)
+    assert.match(err, 'error new_readable_event')
+    assert.is_nil(timeout)
+    assert.is_true(new_readable_called)
+    assert.is_false(wait_event_called)
+    ch:close()
 end
 
 function testcase.pass_channel_to_thread()
