@@ -227,6 +227,17 @@ assert(th:join())
 print(ch:nref()) -- 1
 ```
 
+## ok, err = channel:close()
+
+close the channel. if channel is already closed, this method returns `true`.  
+after closing the channel, the channel can not be used.
+
+
+**Returns**
+
+- `ok:boolean`: `true` on success.
+- `err:any`: error object.
+
 
 ## nref, err = channel:nref()
 

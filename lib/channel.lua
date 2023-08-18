@@ -45,6 +45,7 @@ end
 
 --- define pthread.thread.queue metatable
 --- @class pthread.thread.queue
+--- @field close fun(self: pthread.thread.queue):(ok:boolean, err:any)
 --- @field nref fun(self: pthread.thread.queue):(nref:integer, err:any)
 --- @field len fun(self: pthread.thread.queue):(len:integer, err:any)
 --- @field size fun(self: pthread.thread.queue):(size:integer, err:any)
@@ -69,6 +70,13 @@ function Channel:init(queue)
 
     self.queue = queue
     return self
+end
+
+--- close
+--- @return boolean ok
+--- @return any err
+function Channel:close()
+    return self.queue:close()
 end
 
 --- nref

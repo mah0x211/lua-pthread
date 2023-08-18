@@ -59,9 +59,16 @@ static void delete_queue_data(void *data, void *arg)
     free(data);
 }
 
-static int pop_lua(lua_State *L)
+static inline lpthread_queue_t *check_lpthread_queue(lua_State *L)
 {
     lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    luaL_argcheck(L, !q->closed, 1, "queue is closed");
+    return q;
+}
+
+static int pop_lua(lua_State *L)
+{
+    lpthread_queue_t *q = check_lpthread_queue(L);
     qdata_t *data       = NULL;
 
     errno = 0;
@@ -113,7 +120,7 @@ static int pop_lua(lua_State *L)
 
 static int push_lua(lua_State *L)
 {
-    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    lpthread_queue_t *q = check_lpthread_queue(L);
     qdata_t data        = {0};
     size_t len          = 0;
 
@@ -208,7 +215,7 @@ static int push_lua(lua_State *L)
 
 static int fd_readable_lua(lua_State *L)
 {
-    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    lpthread_queue_t *q = check_lpthread_queue(L);
     int fd              = queue_fd_readable(q->queue);
 
     if (fd < 0) {
@@ -223,7 +230,7 @@ static int fd_readable_lua(lua_State *L)
 
 static int fd_writable_lua(lua_State *L)
 {
-    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    lpthread_queue_t *q = check_lpthread_queue(L);
     int fd              = queue_fd_writable(q->queue);
 
     if (fd < 0) {
@@ -238,7 +245,7 @@ static int fd_writable_lua(lua_State *L)
 
 static int size_lua(lua_State *L)
 {
-    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    lpthread_queue_t *q = check_lpthread_queue(L);
     ssize_t size        = queue_size(q->queue);
 
     if (size < 0) {
@@ -253,7 +260,7 @@ static int size_lua(lua_State *L)
 
 static int len_lua(lua_State *L)
 {
-    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    lpthread_queue_t *q = check_lpthread_queue(L);
     ssize_t len         = queue_len(q->queue);
 
     if (len < 0) {
@@ -268,7 +275,7 @@ static int len_lua(lua_State *L)
 
 static int nref_lua(lua_State *L)
 {
-    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+    lpthread_queue_t *q = check_lpthread_queue(L);
     int nref            = queue_nref(q->queue);
 
     if (nref < 0) {
@@ -281,6 +288,23 @@ static int nref_lua(lua_State *L)
     return 1;
 }
 
+static int close_lua(lua_State *L)
+{
+    lpthread_queue_t *q = luaL_checkudata(L, 1, LPTHREAD_THREAD_QUEUE_MT);
+
+    if (!q->closed) {
+        if (queue_unref(q->queue) != 0) {
+            // got an error
+            lua_pushboolean(L, 0);
+            lua_errno_new(L, errno, NULL);
+            return 2;
+        }
+        q->closed = 1;
+    }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 static int tostring_lua(lua_State *L)
 {
     lua_pushfstring(L, LPTHREAD_THREAD_QUEUE_MT ": %p", lua_touserdata(L, 1));
@@ -290,7 +314,7 @@ static int tostring_lua(lua_State *L)
 static int gc_lua(lua_State *L)
 {
     lpthread_queue_t *q = lua_touserdata(L, 1);
-    if (queue_unref(q->queue) != 0) {
+    if (!q->closed && queue_unref(q->queue) != 0) {
         perror("failed to queue_unref() in pthread.queue.gc_lua");
     }
     return 0;
@@ -303,6 +327,7 @@ static int new_lua(lua_State *L)
 
     lpthread_queue_t *q = lua_newuserdata(L, sizeof(lpthread_queue_t));
     q->queue            = queue_new(maxitem, maxsize, delete_queue_data, NULL);
+    q->closed           = 0;
     if (!q->queue) {
         lua_pushnil(L);
         lua_errno_new(L, errno, NULL);
@@ -321,6 +346,7 @@ void luaopen_pthread_queue(lua_State *L)
         {NULL,         NULL        }
     };
     struct luaL_Reg methods[] = {
+        {"close",       close_lua      },
         {"nref",        nref_lua       },
         {"len",         len_lua        },
         {"size",        size_lua       },
