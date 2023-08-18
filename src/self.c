@@ -94,7 +94,6 @@ static int new_pthread_self(lua_State *L)
         {NULL, NULL}
     };
     int nchan = lua_gettop(L);
-    int rc    = 0;
 
     register_mt(L, PTHREAD_SELF_MT, mmethods, methods);
 
@@ -113,34 +112,6 @@ static int new_pthread_self(lua_State *L)
         luaL_getmetatable(L, LPTHREAD_THREAD_QUEUE_MT);
         lua_setmetatable(L, -2);
         lua_replace(L, i);
-    }
-
-    // wrap the pthread.thread.queue object in the pthread.channel object
-    rc = luaL_loadstring(
-        L, "local select = select\n"
-           "local unpack = unpack or table.unpack\n"
-           "local wrap_channel = require('pthread.channel').wrap\n"
-           "local qlist = {...}\n"
-           "for i = 1, select('#', ...) do\n"
-           "    local q = qlist[i]\n"
-           "    qlist[i] = wrap_channel(q)\n"
-           "end\n"
-           "return unpack(qlist)\n");
-    if (rc != 0) {
-        errno = (rc == LUA_ERRMEM) ? ENOMEM : ECANCELED;
-        return luaL_error(L,
-                          "failed to wrap the pthread.thread.queue object in "
-                          "the pthread.channel: %s",
-                          lua_tostring(L, -1));
-    }
-    lua_insert(L, 1);
-    rc = lua_pcall(L, nchan, LUA_MULTRET, 0);
-    if (rc != 0) {
-        errno = (rc == LUA_ERRMEM) ? ENOMEM : ECANCELED;
-        return luaL_error(L,
-                          "failed to wrap the pthread.thread.queue object in "
-                          "the pthread.channel: %s",
-                          lua_tostring(L, -1));
     }
 
     // create pthread.self

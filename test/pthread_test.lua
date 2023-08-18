@@ -25,7 +25,7 @@ function testcase.new()
     assert.equal(status, 'terminated')
     assert.is_nil(errmsg)
 
-    -- test that return error if failed to create a new thread
+    -- test that return error if function is invalid
     th, err = pthread.new('function() do end')
     assert.is_nil(th)
     assert.re_match(err, 'invalid', 'i')
@@ -71,6 +71,11 @@ function testcase.new_with_file()
     local status, errmsg = th:status()
     assert.equal(status, 'terminated')
     assert.is_nil(errmsg)
+
+    -- test that return error if file is invalid
+    th, err = pthread.new_with_file('unknown_file')
+    assert.is_nil(th)
+    assert.match(err, 'unknown_file')
 end
 
 --
