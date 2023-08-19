@@ -17,12 +17,6 @@ function testcase.new()
     assert.match(th, 'pthread.thread: 0x%x+', false)
     assert.is_nil(err)
 
-    -- test that create a new thread with file
-    th, err = pthread.new_with_file(srcfile)
-    os.remove(srcfile)
-    assert.match(th, 'pthread.thread: 0x%x+', false)
-    assert.is_nil(err)
-
     -- test that return error if failed to create a new thread
     th, err = pthread.new('function() do end')
     assert.is_nil(th)

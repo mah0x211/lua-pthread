@@ -170,7 +170,7 @@ static const char *read_script(lua_State *L, void *data, size_t *size)
 }
 
 int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
-                        size_t len, int with_file)
+                        size_t len)
 {
     // create thread state
     lua_State *thL = luaL_newstate();
@@ -190,22 +190,17 @@ int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
     // add traceback function
     lua_pushcfunction(thL, traceback);
 
-    errno = 0;
-    if (with_file) {
-        // load script file
-        rc = luaL_loadfile(thL, src);
-    } else {
-        // load script
-        read_ctx_t ctx = {
-            .src = src,
-            .len = len,
-        };
+    errno          = 0;
+    // load script
+    read_ctx_t ctx = {
+        .src = src,
+        .len = len,
+    };
 #if LUA_VERSION_NUM >= 502
-        rc = lua_load(thL, read_script, &ctx, NULL, NULL);
+    rc = lua_load(thL, read_script, &ctx, NULL, NULL);
 #else
-        rc = lua_load(thL, read_script, &ctx, NULL);
+    rc = lua_load(thL, read_script, &ctx, NULL);
 #endif
-    }
 
     if (rc != 0) {
         errno = (rc == LUA_ERRMEM) ? ENOMEM : EINVAL;
