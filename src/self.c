@@ -21,6 +21,7 @@
  */
 
 #include "lpthread.h"
+#include <assert.h>
 
 #define PTHREAD_SELF_MT "pthread.self"
 
@@ -80,7 +81,52 @@ static void *on_start(void *arg)
 static int is_cancelled_lua(lua_State *L)
 {
     lpthread_self_t *self = luaL_checkudata(L, 1, PTHREAD_SELF_MT);
-    lua_pushboolean(L, self->parent->is_cancelled);
+    char buf[3]           = {0};
+    ssize_t len           = 0;
+
+    if (self->parent->cancelfd[1] == -1) {
+        lua_pushboolean(L, 1);
+        return 1;
+    }
+
+RETRY:
+    len = read(self->parent->cancelfd[0], buf, sizeof(buf));
+    assert(len >= -1 && len <= 1);
+    switch (len) {
+    case -1:
+        // got error
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // timeout
+            lua_pushboolean(L, 0);
+            lua_pushnil(L);
+            lua_pushboolean(L, 1);
+            return 3;
+        } else if (errno != EINTR) {
+            lua_pushboolean(L, 0);
+            lua_errno_new(L, errno, NULL);
+            return 2;
+        }
+        goto RETRY;
+
+    case 0:
+        return luaL_error(
+            L, "the pipe for inter-thread communication was closed for "
+               "unknown reasons.");
+
+    default:
+        // received the termination message from thread
+        assert(*buf == '0');
+        lua_pushboolean(L, 1);
+        return 1;
+    }
+}
+
+static int fd_cancel_lua(lua_State *L)
+{
+    lpthread_self_t *self = luaL_checkudata(L, 1, PTHREAD_SELF_MT);
+
+    // return read side of the pipe
+    lua_pushinteger(L, self->parent->cancelfd[0]);
     return 1;
 }
 
@@ -98,6 +144,7 @@ static int new_pthread_self(lua_State *L)
         {NULL,         NULL        }
     };
     struct luaL_Reg methods[] = {
+        {"fd_cancel",    fd_cancel_lua   },
         {"is_cancelled", is_cancelled_lua},
         {NULL,           NULL            }
     };

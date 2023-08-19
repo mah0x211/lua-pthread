@@ -99,17 +99,50 @@ function testcase.cancel_notify()
         local sleep = require('testcase.timer').sleep
         local th = ...
         while not th:is_cancelled() do
-            sleep(1)
+            sleep(.1)
         end
+        -- test that is_cancelled method can be called multiple times
+        sleep(.1)
+        assert(th:is_cancelled())
     ]])
     -- wait for thread to load module
     sleep(.1)
 
     -- test that notify a thread to cancel
     assert(th:cancel(true))
+
+    -- test that cancel method can be called multiple times
+    assert(th:cancel(true))
+
+    -- confirm that thread is canceled
     assert(iowait.readable(th:fd()))
     assert(th:join())
 
+    -- test that return 'terminated' when thread is soft canceled
+    assert.equal(th:status(), 'terminated')
+end
+
+function testcase.fd_cancel()
+    local th = pthread.new([[
+        local assert = require('assert')
+        local io_wait_readable = require('io.wait').readable
+        local sleep = require('testcase.timer').sleep
+        local th = ...
+
+        -- test that return fd that can be used to wait for thread termination
+        local fd = th:fd_cancel()
+        assert.is_uint(fd)
+        assert(io_wait_readable(fd))
+        assert(th:is_cancelled())
+    ]])
+    -- wait for thread to load module
+    sleep(.1)
+
+    -- test that notify a thread to cancel
+    assert(th:cancel(true))
+    -- confirm that thread is canceled
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
     -- test that return 'terminated' when thread is soft canceled
     assert.equal(th:status(), 'terminated')
 end

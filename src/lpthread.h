@@ -51,8 +51,8 @@ typedef enum {
 typedef struct {
     pthread_t id;
     int pipefd[2];
+    int cancelfd[2];
     lpthread_status_t status;
-    int is_cancelled;
     char errmsg[BUFSIZ];
 } lpthread_t;
 
