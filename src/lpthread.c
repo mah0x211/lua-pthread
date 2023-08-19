@@ -96,7 +96,22 @@ FORCE_JOIN:
 static int cancel_lua(lua_State *L)
 {
     lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
-    int rc = (th->status == THREAD_RUNNING) ? pthread_cancel(th->id) : 0;
+    int notify     = 0;
+    int rc         = 0;
+
+    if (!lua_isnoneornil(L, 2)) {
+        luaL_checktype(L, 2, LUA_TBOOLEAN);
+        notify = lua_toboolean(L, 2);
+    }
+
+    if (th->status == THREAD_RUNNING) {
+        if (notify) {
+            th->is_cancelled = 1;
+            lua_pushboolean(L, 1);
+            return 1;
+        }
+        rc = pthread_cancel(th->id);
+    }
 
     if (rc == 0) {
         lua_pushboolean(L, 1);

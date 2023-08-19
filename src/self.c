@@ -77,6 +77,13 @@ static void *on_start(void *arg)
     return NULL;
 }
 
+static int is_cancelled_lua(lua_State *L)
+{
+    lpthread_self_t *self = luaL_checkudata(L, 1, PTHREAD_SELF_MT);
+    lua_pushboolean(L, self->parent->is_cancelled);
+    return 1;
+}
+
 static int tostring_lua(lua_State *L)
 {
     lua_pushfstring(L, PTHREAD_SELF_MT ": %p", lua_touserdata(L, 1));
@@ -91,7 +98,8 @@ static int new_pthread_self(lua_State *L)
         {NULL,         NULL        }
     };
     struct luaL_Reg methods[] = {
-        {NULL, NULL}
+        {"is_cancelled", is_cancelled_lua},
+        {NULL,           NULL            }
     };
     int nchan = lua_gettop(L);
 

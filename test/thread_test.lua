@@ -94,6 +94,26 @@ function testcase.cancel()
     assert.equal(th:status(), 'cancelled')
 end
 
+function testcase.cancel_notify()
+    local th = pthread.new([[
+        local sleep = require('testcase.timer').sleep
+        local th = ...
+        while not th:is_cancelled() do
+            sleep(1)
+        end
+    ]])
+    -- wait for thread to load module
+    sleep(.1)
+
+    -- test that notify a thread to cancel
+    assert(th:cancel(true))
+    assert(iowait.readable(th:fd()))
+    assert(th:join())
+
+    -- test that return 'terminated' when thread is soft canceled
+    assert.equal(th:status(), 'terminated')
+end
+
 function testcase.fd()
     -- test that return fd that can be used to wait for thread termination
     local th = pthread.new([[

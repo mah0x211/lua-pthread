@@ -33,7 +33,7 @@ local new_readable_event = poll.new_readable_event
 local dispose_event = poll.dispose_event
 local wait_event = poll.wait_event
 
---- @type fun(maxitem?:integer, maxsize?:integer):(queue:pthread.thread.queue?, err:any)
+--- @type fun(maxitem: integer?, maxsize: integer?):(queue: pthread.thread.queue?, err: any)
 local new_queue = require('pthread.thread').queue
 
 --- constants
@@ -61,8 +61,8 @@ end
 
 --- @class pthread.channel
 --- @field private queue pthread.thread.queue
---- @field private readable_evid integer?
---- @field private writable_evid integer?
+--- @field private readable_evid any?
+--- @field private writable_evid any?
 local Channel = {}
 
 --- init
@@ -94,7 +94,7 @@ end
 
 --- wait_readable
 --- @private
---- @param msec? integer
+--- @param msec integer?
 --- @return boolean ok
 --- @return any err
 --- @return boolean? timeout
@@ -119,7 +119,7 @@ end
 
 --- wait_writable
 --- @private
---- @param msec? integer
+--- @param msec integer?
 --- @return boolean ok
 --- @return any err
 --- @return boolean? timeout
@@ -165,7 +165,7 @@ end
 
 --- push
 --- @param value boolean|number|string|lightuserdata
---- @param msec? integer
+--- @param msec integer?
 --- @return boolean ok
 --- @return any err
 --- @return boolean again
@@ -195,7 +195,7 @@ function Channel:push(value, msec)
 end
 
 --- pop
---- @param msec? integer
+--- @param msec integer?
 --- @return any value
 --- @return any err
 --- @return boolean timeout
@@ -228,8 +228,8 @@ end
 Channel = require('metamodule').new(Channel)
 
 --- new
---- @param maxitem? integer
---- @param maxsize? integer
+--- @param maxitem integer?
+--- @param maxsize integer?
 --- @return pthread.channel? self
 --- @return any err
 local function new(maxitem, maxsize)
