@@ -134,7 +134,7 @@ cancel execution of a thread.
 
 **Parameters**
 
-- `notify:boolean`: if `true`, the thread is not cancelled, only the cancellation request is sent. default is `false`. the cancellation request can be checked with `pthread.self:is_cancelled()` method. please see the following example.
+- `notify:boolean`: if `true`, the thread is not cancelled, only the cancellation request is sent. default is `false`.
 
 **Returns**
 
@@ -173,6 +173,30 @@ assert(th:join())
 print('thread status after joined:', th:status()) -- 'terminated'
 print('done')
 ```
+
+
+the generated thread `pthread.self` has the following methods.
+
+
+### ok, err, again = pthread.self:is_cancelled()
+
+check if the thread is cancelled.
+
+**Returns**
+
+- `ok:boolean`: `true` if the thread is cancelled.
+- `err:any`: error object.
+- `again:boolean`: `true` if the thread is not cancelled.
+
+### fd = pthread.self:fd_cancel()
+
+get the file descriptor of the cancellation request. this file descriptor can be used with `select`, `poll` or similar functions to wait for the cancellation request asynchronously.
+
+**NOTE**: this file descriptor should only be used with `select`, `poll` or similar functions. do not use it with `read` or `close` functions.
+
+**Returns**
+
+- `fd:integer`: file descriptor of the cancellation request.
 
 
 ## status, errmsg = pthread:status()

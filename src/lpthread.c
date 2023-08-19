@@ -106,9 +106,25 @@ static int cancel_lua(lua_State *L)
 
     if (th->status == THREAD_RUNNING) {
         if (notify) {
-            th->is_cancelled = 1;
-            lua_pushboolean(L, 1);
-            return 1;
+            if (th->cancelfd[1] == -1) {
+                // already sent cancel message
+                lua_pushboolean(L, 1);
+                return 1;
+            }
+
+RETRY:
+            // send cancel message
+            if (write(th->cancelfd[1], "0", 1) == 1) {
+                close(th->cancelfd[1]);
+                th->cancelfd[1] = -1;
+                lua_pushboolean(L, 1);
+                return 1;
+            } else if (errno == EINTR) {
+                goto RETRY;
+            }
+            lua_pushboolean(L, 0);
+            lua_pushstring(L, strerror(errno));
+            return 2;
         }
         rc = pthread_cancel(th->id);
     }
@@ -173,6 +189,9 @@ static int gc_lua(lua_State *L)
         if (th->pipefd[i] > 0) {
             close(th->pipefd[i]);
         }
+        if (th->cancelfd[i] > 0) {
+            close(th->cancelfd[i]);
+        }
     }
 
     return 0;
@@ -193,14 +212,14 @@ static int new_lua(lua_State *L)
     memset(th, 0, sizeof(lpthread_t));
     th->status = THREAD_RUNNING;
 
-    // create pipe
-    if (pipe(th->pipefd) != 0) {
-        goto FAIL;
-    }
-    // set o_cloexec and o_nonblock flags
-    if (fcntl(th->pipefd[0], F_SETFD, FD_CLOEXEC) != 0 ||
+    // create pipe and sets o_cloexec and o_nonblock flags
+    if (pipe(th->pipefd) != 0 || pipe(th->cancelfd) != 0 ||
+        fcntl(th->pipefd[0], F_SETFD, FD_CLOEXEC) != 0 ||
         fcntl(th->pipefd[0], F_SETFL, O_NONBLOCK) != 0 ||
-        fcntl(th->pipefd[1], F_SETFD, FD_CLOEXEC) != 0) {
+        fcntl(th->pipefd[1], F_SETFD, FD_CLOEXEC) != 0 ||
+        fcntl(th->cancelfd[0], F_SETFD, FD_CLOEXEC) != 0 ||
+        fcntl(th->cancelfd[0], F_SETFL, O_NONBLOCK) != 0 ||
+        fcntl(th->cancelfd[1], F_SETFD, FD_CLOEXEC) != 0) {
         goto FAIL;
     }
 
@@ -227,6 +246,9 @@ FAIL:
     for (int i = 0; i < 2; i++) {
         if (th->pipefd[i] > 0) {
             close(th->pipefd[i]);
+        }
+        if (th->cancelfd[i] > 0) {
+            close(th->cancelfd[i]);
         }
     }
 
