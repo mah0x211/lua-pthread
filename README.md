@@ -128,9 +128,13 @@ wait for thread termination. if the thread has not yet terminated, wait until th
 - `again:boolean`: `true` if the thread has not yet terminated.
 
 
-## ok, err = pthread:cancel()
+## ok, err = pthread:cancel( [notify] )
 
 cancel execution of a thread.
+
+**Parameters**
+
+- `notify:boolean`: if `true`, the thread is not cancelled, only the cancellation request is sent. default is `false`. the cancellation request can be checked with `pthread.self:is_cancelled()` method. please see the following example.
 
 **Returns**
 
@@ -138,11 +142,44 @@ cancel execution of a thread.
 - `err:any`: error object.
 
 
+**Example**
+
+```lua
+local sleep = require('time.sleep')
+local pthread = require('pthread')
+local th, err, again = pthread.new([[
+    local sleep = require('time.sleep')
+    local th = ...
+    while not th:is_cancelled() do
+        print('thread', th, 'running')
+        sleep(1)
+    end
+    print('thread is cancelled')
+]])
+if err then
+    print(err)
+    return
+elseif again then
+    print('too many threads are running')
+    return
+end
+sleep(1) -- wait a second for thread to start
+
+-- notify cancellation request
+assert(th:cancel(true))
+-- wait for thread termination
+assert(th:join())
+
+print('thread status after joined:', th:status()) -- 'terminated'
+print('done')
+```
+
+
 ## status, errmsg = pthread:status()
 
 get the thread status.
 
-NOTE: the thread state is `running` until the `pthread:join()` method returns `true`.
+**NOTE**: the thread state is `running` until the `pthread:join()` method returns `true`.
 
 **Returns**
 

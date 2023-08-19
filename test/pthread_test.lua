@@ -180,3 +180,28 @@ function testcase.cancel()
     assert.is_nil(err)
 end
 
+function testcase.cancel_notify()
+    local th = assert(pthread.new([[
+        local sleep = require('testcase.timer').sleep
+        local th = ...
+        while not th:is_cancelled() do
+            sleep(0.1)
+        end
+    ]]))
+    -- wait for thread to load module
+    sleep(.1)
+
+    -- test that notify a thread to cancel
+    local ok, err = th:cancel(true)
+    assert.is_true(ok)
+    assert.is_nil(err)
+    assert(th:join())
+    -- confirm that status is 'terminated'
+    assert.equal(th:status(), 'terminated')
+
+    -- test that return true even if thread is already canceled
+    ok, err = th:cancel(true)
+    assert.is_true(ok)
+    assert.is_nil(err)
+end
+

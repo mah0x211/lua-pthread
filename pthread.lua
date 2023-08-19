@@ -43,7 +43,7 @@ local EINVAL = require('errno').EINVAL
 --- define pthread.thread metatable
 --- @class pthread.thread
 --- @field join fun(self: pthread.thread):(ok:boolean, err:any, again:boolean)
---- @field cancel fun(self: pthread.thread):(ok:boolean, err:any)
+--- @field cancel fun(self: pthread.thread, notify: boolean?):(ok:boolean, err:any)
 --- @field status fun(self: pthread.thread):(status:string, errmsg:string)
 --- @field fd fun(self: pthread.thread):integer
 
@@ -52,7 +52,7 @@ local EINVAL = require('errno').EINVAL
 local Pthread = {}
 
 --- init
---- @param newfn fun(src:string, ...:pthread.channel):(pthread.thread?, any, boolean?)
+--- @param newfn fun(src:string, ...:pthread.thread.queue):(pthread.thread?, any, boolean?)
 --- @param src string
 --- @param ... pthread.channel
 --- @return pthread? self
@@ -81,7 +81,7 @@ function Pthread:init(newfn, src, ...)
 end
 
 --- join
---- @param msec? integer
+--- @param msec integer?
 --- @return boolean ok
 --- @return any err
 --- @return boolean? timeout
@@ -101,10 +101,11 @@ function Pthread:join(msec)
 end
 
 --- cancel
+--- @param notify boolean?
 --- @return boolean ok
 --- @return any err
-function Pthread:cancel()
-    return self.thread:cancel()
+function Pthread:cancel(notify)
+    return self.thread:cancel(notify)
 end
 
 --- status
