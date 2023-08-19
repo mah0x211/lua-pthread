@@ -22,7 +22,14 @@
 --- assign to local
 local select = select
 local tostring = tostring
+local tonumber = tonumber
+local load = load
+local loadstring = loadstring
+local open = io.open
+local format = string.format
 local dump = string.dump
+local match = string.match
+local concat = table.concat
 local unpack = unpack or table.unpack
 local wait = require('io.wait')
 local io_wait_readable = wait.readable
@@ -30,8 +37,8 @@ local poll = require('gpoll')
 local pollable = poll.pollable
 local poll_readable = poll.readable
 local new_thread = require('pthread.thread').new
-local new_thread_with_file = require('pthread.thread').new_with_file
 local instanceof = require('metamodule').instanceof
+local EINVAL = require('errno').EINVAL
 
 --- define pthread.thread metatable
 --- @class pthread.thread
@@ -109,6 +116,51 @@ end
 
 Pthread = require('metamodule').new(Pthread)
 
+local LUA_VERSION = tonumber(match(_VERSION, 'Lua (.+)$'))
+local LOADFN = LUA_VERSION <= 5.1 and loadstring or load
+local STARTFN = {
+    [[
+-- wrap pthread.queue arguments in pthread.channel
+local unpack = unpack or table.unpack
+local wrap_channel = require('pthread.channel').wrap
+local th = ...
+local queues = {select(2, ...)}
+for i = 1, #queues do
+    queues[i] = wrap_channel(queues[i])
+end]],
+    '-- load and run user defined function',
+    'fn = assert(' .. (LUA_VERSION <= 5.1 and 'loadstring' or 'load') .. '(',
+    '',
+    '))',
+    'fn(th, unpack(queues))',
+}
+
+--- new
+--- @param str string
+--- @param ... pthread.channel
+--- @return pthread? self
+--- @return any err
+--- @return boolean? again
+local function new(str, ...)
+    -- evaluate the given string as a lua script
+    local fn, err = LOADFN(str)
+    if not fn then
+        return nil, EINVAL:new(err)
+    end
+    -- insert the given string into STARTFN
+    STARTFN[4] = format('%q', str)
+    local src = concat(STARTFN, '\n')
+    return Pthread(new_thread, src, ...)
+end
+
+--- new_with_func
+--- @param fn fun(pthread.self, ...:pthread.channel)
+--- @param ... pthread.channel
+local function new_with_func(fn, ...)
+    local str = dump(fn)
+    return new(str, ...)
+end
+
 --- new_with_file
 --- @param filename string
 --- @param ... pthread.channel
@@ -116,25 +168,18 @@ Pthread = require('metamodule').new(Pthread)
 --- @return any err
 --- @return boolean? again
 local function new_with_file(filename, ...)
-    return Pthread(new_thread_with_file, filename, ...)
-end
+    local file, err = open(filename, 'r')
+    if not file then
+        return nil, EINVAL:new(err)
+    end
+    local str
+    str, err = file:read('*a')
+    file:close()
+    if not str then
+        return nil, err
+    end
 
---- new_with_func
---- @param fn fun(pthread.self, ...:pthread.channel)
---- @param ... pthread.channel
-local function new_with_func(fn, ...)
-    local src = dump(fn)
-    return Pthread(new_thread, src, ...)
-end
-
---- new
---- @param src string
---- @param ... pthread.channel
---- @return pthread? self
---- @return any err
---- @return boolean? again
-local function new(src, ...)
-    return Pthread(new_thread, src, ...)
+    return new(str, ...)
 end
 
 return {

@@ -163,7 +163,7 @@ static int gc_lua(lua_State *L)
     return 0;
 }
 
-static int new_ex(lua_State *L, int with_file)
+static int new_lua(lua_State *L)
 {
     size_t len      = 0;
     const char *src = luaL_checklstring(L, 1, &len);
@@ -190,7 +190,7 @@ static int new_ex(lua_State *L, int with_file)
     }
 
     // create thread
-    errno = lpthread_self_start(L, th, src, len, with_file);
+    errno = lpthread_self_start(L, th, src, len);
     if (errno != 0) {
         lua_settop(L, 0);
         if (errno == EAGAIN) {
@@ -221,16 +221,6 @@ FAIL:
     return 2;
 }
 
-static int new_with_file_lua(lua_State *L)
-{
-    return new_ex(L, 1);
-}
-
-static int new_lua(lua_State *L)
-{
-    return new_ex(L, 0);
-}
-
 LUALIB_API int luaopen_pthread_thread(lua_State *L)
 {
     struct luaL_Reg mmethods[] = {
@@ -253,8 +243,6 @@ LUALIB_API int luaopen_pthread_thread(lua_State *L)
     lua_createtable(L, 0, 2);
     lua_pushcfunction(L, new_lua);
     lua_setfield(L, -2, "new");
-    lua_pushcfunction(L, new_with_file_lua);
-    lua_setfield(L, -2, "new_with_file");
     luaopen_pthread_queue(L);
     lua_setfield(L, -2, "queue");
     return 1;

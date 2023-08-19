@@ -63,7 +63,7 @@ typedef struct {
 void luaopen_pthread_queue(lua_State *L);
 
 int lpthread_self_start(lua_State *L, lpthread_t *th, const char *src,
-                        size_t len, int with_file);
+                        size_t len);
 
 static inline void register_mt(lua_State *L, const char *tname,
                                struct luaL_Reg *mmethods,
