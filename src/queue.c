@@ -135,8 +135,8 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
         free(q);
         return NULL;
     } else if (create_pipe(q->pipefd_writable) != 0) {
-        free(q);
         close_pipe(q->pipefd_readable);
+        free(q);
         return NULL;
     }
 
