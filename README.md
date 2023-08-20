@@ -35,7 +35,6 @@ executes a `src` script on a new posix thread and returns a `pthread` object. al
 - `th:pthread`: `pthread` object.
 - `err:any`: error object.
 - `again:boolean`: `true` if `pthread_create` return `EAGAIN` error.
-- `errno:number`: error number.
 
 **NOTE**
 
@@ -93,15 +92,21 @@ end))
 
 **Returns**
 
-- `th:pthread`: `pthread` object.
-- `err:any`: error object.
-- `again:boolean`: `true` if `pthread_create` return `EAGAIN` error.
-- `errno:number`: error number.
+same as `pthread.new` function.
 
 
 ## th, err, again = pthread.new_with_file( filename [, ch, ...] )
 
 executes a `filename` script on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
+
+**NOTE**
+
+this function is equivalent to the following code.
+
+```lua
+local pthread = require('pthread')
+local th, err, again = pthread.new(assert(io.open(filename, 'r')):read('*a'))
+```
 
 **Parameters**
 
@@ -113,7 +118,7 @@ executes a `filename` script on a new posix thread and returns a `pthread` objec
 same as `pthread.new` function.
 
 
-## ok, err, again = pthread:join( [msec] )
+## ok, err, timeout = pthread:join( [msec] )
 
 wait for thread termination. if the thread has not yet terminated, wait until the thread terminates in the specified timeout `msec`.
 
@@ -125,7 +130,7 @@ wait for thread termination. if the thread has not yet terminated, wait until th
 
 - `ok:boolean`: `true` success or if already joined.
 - `err:any`: error object.
-- `again:boolean`: `true` if the thread has not yet terminated.
+- `timeout:boolean`: `true` if the thread has not yet terminated.
 
 
 ## ok, err = pthread:cancel( [notify] )
@@ -187,6 +192,7 @@ check if the thread is cancelled.
 - `ok:boolean`: `true` if the thread is cancelled.
 - `err:any`: error object.
 - `again:boolean`: `true` if the thread is not cancelled.
+
 
 ### fd = pthread.self:fd_cancel()
 
@@ -330,7 +336,7 @@ get the used memory size of the channel.
 - `err:any`: error object.
 
 
-## ok, err, again = channel:push( value [, msec] )
+## ok, err, timeout = channel:push( value [, msec] )
 
 push the value to the channel. if the channel is full, wait until the value is popped from the channel in the specified timeout `msec`.
 
@@ -343,10 +349,10 @@ push the value to the channel. if the channel is full, wait until the value is p
 
 - `ok:boolean`: `true` on success.
 - `err:any`: error object.
-- `again:boolean`: `true` if the channel is full and the timeout has expired.
+- `timeout:boolean`: `true` if the channel is full and the timeout has expired.
 
 
-## value, err, again = channel:pop( [msec] )
+## value, err, timeout = channel:pop( [msec] )
 
 pop the value from the channel. if the channel is empty, wait until the value is pushed to the channel in the specified timeout `msec`.
 
@@ -358,5 +364,5 @@ pop the value from the channel. if the channel is empty, wait until the value is
 
 - `value:any`: oldest value in the channel.
 - `err:any`: error object.
-- `again:boolean`: `true` if the channel is empty and the timeout has expired.
+- `timeout:boolean`: `true` if the channel is empty and the timeout has expired.
 
