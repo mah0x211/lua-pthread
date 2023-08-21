@@ -194,14 +194,14 @@ static int push_lua(lua_State *L)
     switch (queue_push(q->queue, item, len)) {
     case -1:
         // failed to push a value
-        free(item);
+        delete_queue_data((void *)item, NULL);
         lua_pushboolean(L, 0);
         lua_errno_new(L, errno, NULL);
         return 2;
 
     case 0:
         // queue is full
-        free(item);
+        delete_queue_data((void *)item, NULL);
         lua_pushboolean(L, 0);
         lua_pushnil(L);
         lua_pushboolean(L, 1);
