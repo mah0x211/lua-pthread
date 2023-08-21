@@ -51,11 +51,6 @@ typedef struct {
 static void delete_queue_data(void *data, void *arg)
 {
     (void)arg;
-    qdata_t *qdata = (qdata_t *)data;
-
-    if (qdata->type == QDATA_STRING) {
-        free((void *)qdata->value.str.data);
-    }
     free(data);
 }
 
@@ -122,7 +117,7 @@ static int push_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
     qdata_t data        = {0};
-    size_t len          = 0;
+    size_t size         = sizeof(qdata_t);
 
     switch (lua_type(L, 2)) {
     case LUA_TBOOLEAN:
@@ -131,31 +126,27 @@ static int push_lua(lua_State *L)
         } else {
             data.type = QDATA_FALSE;
         }
-        len = 1;
         break;
 
     case LUA_TNUMBER:
         if (lauxh_isinteger(L, 2)) {
             data.type       = QDATA_INTEGER;
             data.value.ival = lua_tointeger(L, 2);
-            len             = 1 + sizeof(lua_Integer);
         } else {
             data.type       = QDATA_NUMBER;
             data.value.nval = lua_tonumber(L, 2);
-            len             = 1 + sizeof(lua_Number);
         }
         break;
 
     case LUA_TSTRING:
         data.type           = QDATA_STRING;
         data.value.str.data = lua_tolstring(L, 2, &data.value.str.len);
-        len                 = 1 + sizeof(size_t) + data.value.str.len;
+        size += data.value.str.len;
         break;
 
     case LUA_TLIGHTUSERDATA:
         data.type    = QDATA_LIGHTUSERDATA;
         data.value.p = (uintptr_t)lua_touserdata(L, 2);
-        len          = 1 + sizeof(uintptr_t);
         break;
 
     // ignore unsupported values
@@ -170,7 +161,7 @@ static int push_lua(lua_State *L)
     }
 
     // allocate memory for queue data
-    qdata_t *item = malloc(sizeof(qdata_t));
+    qdata_t *item = malloc(size);
     if (!item) {
         lua_pushboolean(L, 0);
         lua_errno_new(L, errno, NULL);
@@ -179,19 +170,13 @@ static int push_lua(lua_State *L)
     *item = data;
     // copy a string value
     if (data.type == QDATA_STRING) {
-        item->value.str.data = malloc(data.value.str.len);
-        if (!item->value.str.data) {
-            free(item);
-            lua_pushboolean(L, 0);
-            lua_errno_new(L, errno, NULL);
-            return 2;
-        }
+        item->value.str.data = (char *)(item + 1);
         memcpy((void *)item->value.str.data, data.value.str.data,
                data.value.str.len);
     }
 
     // push a value to queue
-    switch (queue_push(q->queue, item, len)) {
+    switch (queue_push(q->queue, item, size)) {
     case -1:
         // failed to push a value
         delete_queue_data((void *)item, NULL);
