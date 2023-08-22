@@ -49,7 +49,7 @@ typedef struct queue_t {
     pthread_mutex_t mutex;
     queue_delete_cb delete_cb;
     void *delete_cb_arg;
-    size_t maxitem;
+    ssize_t maxitem;
     size_t totalitem;
     size_t maxsize;
     size_t totalsize;
@@ -113,6 +113,14 @@ int queue_unref(queue_t *queue);
  * is set to indicate the error.
  */
 int queue_nref(queue_t *queue);
+
+/**
+ * @brief queue_maxitem
+ *  Get the maximum number of items that can be stored in the queue.
+ * @param q The queue object.
+ * @return ssize_t The maximum number of items that can be stored in the queue,
+ */
+ssize_t queue_maxitem(queue_t *q);
 
 /**
  * @brief queue_len
