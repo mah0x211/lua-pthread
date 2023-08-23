@@ -32,7 +32,7 @@
 #include <unistd.h>
 
 typedef struct queue_item_t {
-    void *data;
+    uintptr_t data;
     size_t size;
     struct queue_item_t *prev;
     struct queue_item_t *next;
@@ -44,7 +44,7 @@ typedef struct queue_item_t {
  * @param data The data to be deleted.
  * @param arg The argument to be passed to the callback function.
  */
-typedef void (*queue_delete_cb)(void *data, void *arg);
+typedef void (*queue_delete_cb)(uintptr_t data, void *arg);
 
 typedef struct queue_t {
     uintptr_t op;
@@ -193,7 +193,7 @@ int queue_fd_writable(queue_t *queue, uintptr_t op);
  * @return int 1 on success, 0 if the queue is full, otherwise errno is set to
  * indicate the error.
  */
-int queue_push(queue_t *queue, uintptr_t op, void *data, size_t size);
+int queue_push(queue_t *queue, uintptr_t op, uintptr_t data, size_t size);
 
 /**
  * @brief queue_pop
@@ -206,7 +206,7 @@ int queue_push(queue_t *queue, uintptr_t op, void *data, size_t size);
  * @param data The data to be returned.
  * @return int 0 on success, otherwise errno is set to indicate the error.
  */
-int queue_pop(queue_t *queue, uintptr_t op, void **data);
+int queue_pop(queue_t *queue, uintptr_t op, uintptr_t *data);
 
 // /**
 //  * @brief queue_head

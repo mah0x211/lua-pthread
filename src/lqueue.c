@@ -48,10 +48,10 @@ typedef struct {
     } value;
 } qdata_t;
 
-static void delete_queue_data(void *data, void *arg)
+static void delete_queue_data(uintptr_t data, void *arg)
 {
     (void)arg;
-    free(data);
+    free((void *)data);
 }
 
 static inline lpthread_queue_t *check_lpthread_queue(lua_State *L)
@@ -67,7 +67,7 @@ static int pop_lua(lua_State *L)
     qdata_t *data       = NULL;
 
     errno = 0;
-    if (queue_pop(q->queue, (uintptr_t)q, (void *)&data) != 0) {
+    if (queue_pop(q->queue, (uintptr_t)q, (uintptr_t *)&data) != 0) {
         // got an error
         lua_pushnil(L);
         lua_errno_new(L, errno, NULL);
@@ -108,7 +108,7 @@ static int pop_lua(lua_State *L)
         lua_pushnil(L);
         break;
     }
-    delete_queue_data((void *)data, NULL);
+    delete_queue_data((uintptr_t)data, NULL);
 
     return 1;
 }
@@ -176,17 +176,17 @@ static int push_lua(lua_State *L)
     }
 
     // push a value to queue
-    switch (queue_push(q->queue, (uintptr_t)q, item, size)) {
+    switch (queue_push(q->queue, (uintptr_t)q, (uintptr_t)item, size)) {
     case -1:
         // failed to push a value
-        delete_queue_data((void *)item, NULL);
+        delete_queue_data((uintptr_t)item, NULL);
         lua_pushboolean(L, 0);
         lua_errno_new(L, errno, NULL);
         return 2;
 
     case 0:
         // queue is full
-        delete_queue_data((void *)item, NULL);
+        delete_queue_data((uintptr_t)item, NULL);
         lua_pushboolean(L, 0);
         lua_pushnil(L);
         lua_pushboolean(L, 1);

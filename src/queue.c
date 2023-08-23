@@ -140,7 +140,7 @@ static int dispose_queue(queue_t *q)
 
     // delete all items
     while (q->head) {
-        void *data         = q->head->data;
+        uintptr_t data     = q->head->data;
         queue_item_t *next = q->head->next;
 
         if (q->delete_cb) {
@@ -275,7 +275,7 @@ int queue_fd_writable(queue_t *q, uintptr_t op)
     return fd;
 }
 
-int queue_push(queue_t *q, uintptr_t op, void *data, size_t size)
+int queue_push(queue_t *q, uintptr_t op, uintptr_t data, size_t size)
 {
     int lockrc         = queue_lock(q, op);
     ssize_t totalitem  = q->totalitem + 1;
@@ -324,10 +324,10 @@ int queue_push(queue_t *q, uintptr_t op, void *data, size_t size)
     return 1;
 }
 
-static void *remove_head(queue_t *q)
+static uintptr_t remove_head(queue_t *q)
 {
     queue_item_t *item = q->head;
-    char *data         = item->data;
+    uintptr_t data     = item->data;
 
     q->totalitem--;
     q->head = item->next;
@@ -341,7 +341,7 @@ static void *remove_head(queue_t *q)
     return data;
 }
 
-int queue_pop(queue_t *q, uintptr_t op, void **data)
+int queue_pop(queue_t *q, uintptr_t op, uintptr_t *data)
 {
     int lockrc = queue_lock(q, op);
     if (q->head == NULL) {
