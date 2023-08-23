@@ -19,17 +19,13 @@ end
 function testcase.close()
     -- test that close a pthread.channel
     local ch = new_channel()
-    local ok, err = ch:close()
-    assert.is_true(ok)
-    assert.is_nil(err)
+    assert.is_nil(ch:close())
 
     -- test that can be called multiple times
-    ok, err = ch:close()
-    assert.is_true(ok)
-    assert.is_nil(err)
+    assert.is_nil(ch:close())
 
     -- test that throws an error if queue is closed
-    err = assert.throws(function()
+    local err = assert.throws(function()
         ch:push('foo')
     end)
     assert.match(err, 'queue is closed')
