@@ -243,14 +243,13 @@ print('done')
 ```
 
 
-## ch, err = channel.new( [maxitem [, maxsize]] )
+## ch, err = channel.new( [maxitem] )
 
 create a `pthread.channel` object.
 
 **Parameters**
 
 - `maxitem:integer`: maximum number of items that can be stored in the channel. default is `0` (unlimited).
-- `maxsize:integer`: maximum size of the item that can be stored in the channel. default is `0` (unlimited).
 
 **Returns**
 
@@ -321,15 +320,6 @@ get the number of items in the channel.
 **Returns**
 
 - `len:integer`: number of items.
-
-
-## size = channel:size()
-
-get the used memory size of the channel.
-
-**Returns**
-
-- `size:integer`: used memory size.
 
 
 ## ok, err, timeout = channel:push( value [, msec] )

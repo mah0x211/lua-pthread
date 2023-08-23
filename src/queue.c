@@ -149,8 +149,7 @@ static int dispose_queue(queue_t *q)
     return 1;
 }
 
-queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
-                   void *arg)
+queue_t *queue_new(ssize_t maxitem, queue_delete_cb cb, void *arg)
 {
     queue_t *q = (queue_t *)calloc(1, sizeof(queue_t));
 
@@ -173,8 +172,6 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
     q->delete_cb_arg = arg;
     q->maxitem       = (maxitem > 0) ? maxitem : 0;
     q->totalitem     = 0;
-    q->maxsize       = (size_t)(maxsize > 0) ? maxsize : 0;
-    q->totalsize     = 0;
     q->head = q->tail = NULL;
     q->refcnt         = 1;
     q->status         = 0;
@@ -254,14 +251,6 @@ ssize_t queue_len(queue_t *q, uintptr_t op)
     return len;
 }
 
-ssize_t queue_size(queue_t *q, uintptr_t op)
-{
-    int lockrc   = queue_lock(q, op);
-    ssize_t size = q->totalsize;
-    queue_unlock(q, op, lockrc);
-    return size;
-}
-
 int queue_fd_readable(queue_t *q, uintptr_t op)
 {
     int lockrc = queue_lock(q, op);
@@ -282,10 +271,7 @@ int queue_push(queue_t *q, uintptr_t op, void *data, size_t size)
 {
     int lockrc = queue_lock(q, op);
 
-    if ((q->maxitem > 0 && q->totalitem >= q->maxitem) ||
-        (q->maxsize > 0 &&
-         (size > q->maxsize || sizeof(queue_item_t) > q->maxsize - size ||
-          q->totalsize > q->maxsize - size - sizeof(queue_item_t)))) {
+    if (q->maxitem > 0 && q->totalitem >= q->maxitem) {
         if (unnotify_writable(q) != 0) {
             // failed to read from pipe
             queue_unlock(q, op, lockrc);
@@ -311,7 +297,6 @@ int queue_push(queue_t *q, uintptr_t op, void *data, size_t size)
     item->data = data;
     item->size = size;
     q->totalitem++;
-    q->totalsize += size + sizeof(queue_item_t);
 
     if (q->tail) {
         item->prev    = q->tail;
@@ -331,8 +316,6 @@ static void *remove_head(queue_t *q)
     char *data         = item->data;
 
     q->totalitem--;
-    q->totalsize -= item->size + sizeof(queue_item_t);
-
     q->head = item->next;
     if (q->head) {
         q->head->prev = NULL;
@@ -396,7 +379,6 @@ int queue_pop(queue_t *q, uintptr_t op, void **data)
 //         *size = item->size;
 //     }
 //     q->totalitem--;
-//     q->totalsize -= item->size + sizeof(queue_item_t);
 
 //     q->tail = item->prev;
 //     if (q->tail) {
@@ -428,7 +410,6 @@ int queue_pop(queue_t *q, uintptr_t op, void **data)
 //         item->prev->next = item->next;
 //         item->next->prev = item->prev;
 //         q->totalitem--;
-//         q->totalsize -= item->size + sizeof(queue_item_t);
 //         free(item);
 //     }
 //     pthread_mutex_unlock(&q->mutex);

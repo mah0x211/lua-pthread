@@ -154,28 +154,6 @@ function testcase.push_maxitem()
     end
 end
 
-function testcase.push_maxsize()
-    -- test that create a new pthread.channel with maxsize
-    local ch = new_channel(nil, 100)
-    local nitem = 0
-    for _ = 1, 10 do
-        local ok, err, again = ch:push('hello', 10)
-        if ok then
-            assert.is_true(ok)
-            assert.is_nil(err)
-            assert.is_nil(again)
-            nitem = nitem + 1
-        else
-            assert.is_false(ok)
-            assert.is_nil(err)
-            assert.is_true(again)
-            assert.equal(ch:len(), nitem)
-            assert.less_or_equal(ch:size(), 100)
-            break
-        end
-    end
-end
-
 function testcase.pop()
     local ch = new_channel()
     local pushlist = {
@@ -204,7 +182,6 @@ function testcase.pop()
     assert.is_true(again)
     assert.equal(poplist, pushlist)
     assert.equal(ch:len(), 0)
-    assert.equal(ch:size(), 0)
 
     -- test that pop values with timeout
     local elapsed = nanotime()

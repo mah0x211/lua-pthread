@@ -146,28 +146,6 @@ function testcase.push_maxitem()
     end
 end
 
-function testcase.push_maxsize()
-    -- test that create a new pthread.thread.queue with maxsize
-    local q = new_queue(nil, 100)
-    local nitem = 0
-    for _ = 1, 10 do
-        local ok, err, again = q:push('hello')
-        if ok then
-            assert.is_true(ok)
-            assert.is_nil(err)
-            assert.is_nil(again)
-            nitem = nitem + 1
-        else
-            assert.is_false(ok)
-            assert.is_nil(err)
-            assert.is_true(again)
-            assert.equal(q:len(), nitem)
-            assert.less_or_equal(q:size(), 100)
-            break
-        end
-    end
-end
-
 function testcase.pop()
     local q = new_queue()
     local pushlist = {
@@ -196,7 +174,6 @@ function testcase.pop()
     assert.is_true(again)
     assert.equal(poplist, pushlist)
     assert.equal(q:len(), 0)
-    assert.equal(q:size(), 0)
 end
 
 function testcase.pass_channel_to_thread()

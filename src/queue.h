@@ -52,8 +52,6 @@ typedef struct queue_t {
     void *delete_cb_arg;
     ssize_t maxitem;
     ssize_t totalitem;
-    size_t maxsize;
-    size_t totalsize;
     int refcnt;
 
 #define QUEUE_STATUS_READABLE 0x01
@@ -79,14 +77,11 @@ typedef struct queue_t {
  *  The queue object must be deleted by queue_delete().
  * @param maxitem The maximum number of items that can be stored in the queue.
  * <1 means unlimited.
- * @param maxsize The maximum memory size that can be stored in the queue. it is
- * including the size of the queue_item_t structure. <1 means unlimited.
  * @param cb The callback function to be called when deleting each item.
  * @param arg The argument to be passed to the callback function.
  * @return queue_t*
  */
-queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
-                   void *arg);
+queue_t *queue_new(ssize_t maxitem, queue_delete_cb cb, void *arg);
 
 #define QUEUE_LOCK_ALREADY 0
 #define QUEUE_LOCK_OK      1

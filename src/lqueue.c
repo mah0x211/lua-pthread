@@ -214,14 +214,6 @@ static int fd_writable_lua(lua_State *L)
     return 1;
 }
 
-static int size_lua(lua_State *L)
-{
-    lpthread_queue_t *q = check_lpthread_queue(L);
-    ssize_t size        = queue_size(q->queue, (uintptr_t)q);
-    lua_pushinteger(L, size);
-    return 1;
-}
-
 static int len_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
@@ -276,10 +268,9 @@ static int gc_lua(lua_State *L)
 static int new_lua(lua_State *L)
 {
     int maxitem = luaL_optinteger(L, 1, 0);
-    int maxsize = luaL_optinteger(L, 2, 0);
 
     lpthread_queue_t *q = lua_newuserdata(L, sizeof(lpthread_queue_t));
-    q->queue            = queue_new(maxitem, maxsize, delete_queue_data, NULL);
+    q->queue            = queue_new(maxitem, delete_queue_data, NULL);
     if (!q->queue) {
         lua_pushnil(L);
         lua_errno_new(L, errno, NULL);
@@ -303,7 +294,6 @@ void luaopen_pthread_queue(lua_State *L)
         {"nref",        nref_lua       },
         {"maxitem",     maxitem_lua    },
         {"len",         len_lua        },
-        {"size",        size_lua       },
         {"fd_readable", fd_readable_lua},
         {"fd_writable", fd_writable_lua},
         {"push",        push_lua       },
