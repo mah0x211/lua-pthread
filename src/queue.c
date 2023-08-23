@@ -178,8 +178,7 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
     q->head = q->tail = NULL;
     q->refcnt         = 1;
     q->status         = 0;
-    if ((q->maxitem == 0 || q->totalitem < q->maxitem) &&
-        notify_writable(q) != 0) {
+    if (notify_writable(q) != 0) {
         // failed to notify writable
         dispose_queue(q);
         return NULL;
