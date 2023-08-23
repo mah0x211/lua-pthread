@@ -13,20 +13,31 @@ function testcase.create_queue()
     assert.is_true(iowait.readable(q:fd_writable(), 10))
 end
 
+function testcase.maxitem()
+    -- test that get maxitem of pthread.thread.queue
+    collectgarbage('stop')
+    for i = 1, 300 do
+        local q, err = new_queue(i)
+        if not q then
+            assert.re_match(err, 'too many open files', 'i')
+            collectgarbage('restart')
+        else
+            assert.equal(q:maxitem(), i)
+        end
+    end
+    collectgarbage('restart')
+end
+
 function testcase.close()
     -- test that close a pthread.thread.queue
     local q = new_queue()
-    local ok, err = q:close()
-    assert.is_true(ok)
-    assert.is_nil(err)
+    assert.is_true(q:close())
 
     -- test that can be called multiple times
-    ok, err = q:close()
-    assert.is_true(ok)
-    assert.is_nil(err)
+    assert.is_true(q:close())
 
     -- test that throws an error if queue is closed
-    err = assert.throws(function()
+    local err = assert.throws(function()
         q:push('foo')
     end)
     assert.match(err, 'queue is closed')
@@ -80,7 +91,7 @@ function testcase.fd_wait()
     local q = new_queue()
 
     -- test that return fd of queue that can be used with iowait.readable
-    local fd = assert(q:fd_readable())
+    local fd = q:fd_readable()
     assert.is_uint(fd)
 
     -- test that timeout if queue is empty

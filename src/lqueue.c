@@ -202,13 +202,6 @@ static int fd_readable_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
     int fd              = queue_fd_readable(q->queue, (uintptr_t)q);
-
-    if (fd < 0) {
-        // got an error
-        lua_pushnil(L);
-        lua_errno_new(L, errno, NULL);
-        return 2;
-    }
     lua_pushinteger(L, fd);
     return 1;
 }
@@ -217,13 +210,6 @@ static int fd_writable_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
     int fd              = queue_fd_writable(q->queue, (uintptr_t)q);
-
-    if (fd < 0) {
-        // got an error
-        lua_pushnil(L);
-        lua_errno_new(L, errno, NULL);
-        return 2;
-    }
     lua_pushinteger(L, fd);
     return 1;
 }
@@ -232,13 +218,6 @@ static int size_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
     ssize_t size        = queue_size(q->queue, (uintptr_t)q);
-
-    if (size < 0) {
-        // got an error
-        lua_pushnil(L);
-        lua_errno_new(L, errno, NULL);
-        return 2;
-    }
     lua_pushinteger(L, size);
     return 1;
 }
@@ -247,13 +226,6 @@ static int len_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
     ssize_t len         = queue_len(q->queue, (uintptr_t)q);
-
-    if (len < 0) {
-        // got an error
-        lua_pushnil(L);
-        lua_errno_new(L, errno, NULL);
-        return 2;
-    }
     lua_pushinteger(L, len);
     return 1;
 }
@@ -262,13 +234,6 @@ static int maxitem_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
     ssize_t maxitem     = queue_maxitem(q->queue, (uintptr_t)q);
-
-    if (maxitem < 0) {
-        // got an error
-        lua_pushnil(L);
-        lua_errno_new(L, errno, NULL);
-        return 2;
-    }
     lua_pushinteger(L, maxitem);
     return 1;
 }
@@ -277,13 +242,6 @@ static int nref_lua(lua_State *L)
 {
     lpthread_queue_t *q = check_lpthread_queue(L);
     int nref            = queue_nref(q->queue, (uintptr_t)q);
-
-    if (nref < 0) {
-        // got an error
-        lua_pushnil(L);
-        lua_errno_new(L, errno, NULL);
-        return 2;
-    }
     lua_pushinteger(L, nref);
     return 1;
 }

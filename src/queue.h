@@ -155,8 +155,7 @@ ssize_t queue_maxitem(queue_t *q, uintptr_t op);
  *  Get the number of items in the queue.
  * @param queue The queue object.
  * @param op The operation ID to be performed on the queue object.
- * @return ssize_t The number of items in the queue, <0 means error and errno
- * is set to indicate the error.
+ * @return ssize_t The number of items in the queue
  */
 ssize_t queue_len(queue_t *queue, uintptr_t op);
 
@@ -165,8 +164,7 @@ ssize_t queue_len(queue_t *queue, uintptr_t op);
  *  Get the used memory size of the queue.
  * @param queue The queue object.
  * @param op The operation ID to be performed on the queue object.
- * @return size_t The used memory size of the queue, <0 means error and errno is
- * set to indicate the error.
+ * @return size_t The used memory size of the queue
  */
 ssize_t queue_size(queue_t *queue, uintptr_t op);
 
@@ -176,7 +174,7 @@ ssize_t queue_size(queue_t *queue, uintptr_t op);
  *  You can use this file descriptor with select(), poll(), epoll(), etc.
  * @param queue The queue object.
  * @param op The operation ID to be performed on the queue object.
- * @return int The file descriptor, <0 means error and errno is set to indicate
+ * @return int The file descriptor
  */
 int queue_fd_readable(queue_t *queue, uintptr_t op);
 
@@ -186,7 +184,7 @@ int queue_fd_readable(queue_t *queue, uintptr_t op);
  *  You can use this file descriptor with select(), poll(), epoll(), etc.
  * @param queue The queue object.
  * @param op The operation ID to be performed on the queue object.
- * @return int The file descriptor, <0 means error and errno is set to indicate
+ * @return int The file descriptor
  */
 int queue_fd_writable(queue_t *queue, uintptr_t op);
 
