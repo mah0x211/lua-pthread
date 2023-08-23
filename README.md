@@ -249,7 +249,7 @@ create a `pthread.channel` object.
 
 **Parameters**
 
-- `maxitem:integer`: maximum number of items that can be stored in the channel. default is `0` (unlimited).
+- `maxitem:integer`: maximum number of items that can be stored in the channel. default is `1`. if `<1` is specified, it is treated as `1`.
 
 **Returns**
 

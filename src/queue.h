@@ -76,7 +76,7 @@ typedef struct queue_t {
  *  Create a new queue object.
  *  The queue object must be deleted by queue_delete().
  * @param maxitem The maximum number of items that can be stored in the queue.
- * <1 means unlimited.
+ * <1 means 1.
  * @param cb The callback function to be called when deleting each item.
  * @param arg The argument to be passed to the callback function.
  * @return queue_t*
