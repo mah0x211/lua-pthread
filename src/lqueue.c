@@ -61,25 +61,8 @@ static inline lpthread_queue_t *check_lpthread_queue(lua_State *L)
     return q;
 }
 
-static int pop_lua(lua_State *L)
+static void push_qdata(lua_State *L, qdata_t *data)
 {
-    lpthread_queue_t *q = check_lpthread_queue(L);
-    qdata_t *data       = NULL;
-
-    errno = 0;
-    if (queue_pop(q->queue, (uintptr_t)q, (uintptr_t *)&data) != 0) {
-        // got an error
-        lua_pushnil(L);
-        lua_errno_new(L, errno, NULL);
-        return 2;
-    } else if (!data) {
-        // queue is empty
-        lua_pushnil(L);
-        lua_pushnil(L);
-        lua_pushboolean(L, 1);
-        return 3;
-    }
-
     switch (data->type) {
     case QDATA_TRUE:
         lua_pushboolean(L, 1);
@@ -108,8 +91,54 @@ static int pop_lua(lua_State *L)
         lua_pushnil(L);
         break;
     }
-    delete_queue_data((uintptr_t)data, NULL);
+}
 
+static int pop_match_lua(lua_State *L)
+{
+    lpthread_queue_t *q = check_lpthread_queue(L);
+    uintptr_t id        = (uintptr_t)luaL_checkinteger(L, 2);
+
+    errno = 0;
+    switch (queue_pop_match(q->queue, (uintptr_t)q, id)) {
+    case 0:
+        // not found
+        lua_pushnil(L);
+        return 1;
+
+    case 1:
+        push_qdata(L, (qdata_t *)id);
+        delete_queue_data(id, NULL);
+        return 1;
+
+    default:
+        // got an error
+        lua_pushnil(L);
+        lua_errno_new(L, errno, NULL);
+        return 2;
+    }
+}
+
+static int pop_lua(lua_State *L)
+{
+    lpthread_queue_t *q = check_lpthread_queue(L);
+    qdata_t *data       = NULL;
+
+    errno = 0;
+    if (queue_pop(q->queue, (uintptr_t)q, (uintptr_t *)&data) != 0) {
+        // got an error
+        lua_pushnil(L);
+        lua_errno_new(L, errno, NULL);
+        return 2;
+    } else if (!data) {
+        // queue is empty
+        lua_pushnil(L);
+        lua_pushnil(L);
+        lua_pushboolean(L, 1);
+        return 3;
+    }
+
+    push_qdata(L, data);
+    delete_queue_data((uintptr_t)data, NULL);
     return 1;
 }
 
@@ -180,20 +209,20 @@ static int push_lua(lua_State *L)
     case -1:
         // failed to push a value
         delete_queue_data((uintptr_t)item, NULL);
-        lua_pushboolean(L, 0);
+        lua_pushnil(L);
         lua_errno_new(L, errno, NULL);
         return 2;
 
     case 0:
         // queue is full
         delete_queue_data((uintptr_t)item, NULL);
-        lua_pushboolean(L, 0);
+        lua_pushnil(L);
         lua_pushnil(L);
         lua_pushboolean(L, 1);
         return 3;
 
     default:
-        lua_pushboolean(L, 1);
+        lua_pushinteger(L, (uintptr_t)item);
         return 1;
     }
 }
@@ -297,6 +326,7 @@ void luaopen_pthread_queue(lua_State *L)
         {"fd_writable", fd_writable_lua},
         {"push",        push_lua       },
         {"pop",         pop_lua        },
+        {"pop_match",   pop_match_lua  },
         {NULL,          NULL           }
     };
 
