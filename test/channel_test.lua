@@ -35,7 +35,7 @@ function testcase.push()
     local ch = new_channel()
 
     -- test that push values
-    for i, v in ipairs({
+    for _, v in ipairs({
         true,
         false,
         1,
@@ -46,7 +46,8 @@ function testcase.push()
         'foo',
     }) do
         assert(ch:push(v))
-        assert.equal(ch:len(), i)
+        assert.equal(ch:len(), 1)
+        assert.equal(ch:pop(), v)
     end
 
     -- test that throws an error if push an unsupported value
@@ -151,7 +152,7 @@ function testcase.push_maxitem()
 end
 
 function testcase.pop()
-    local ch = new_channel()
+    local ch = new_channel(8)
     local pushlist = {
         true,
         false,

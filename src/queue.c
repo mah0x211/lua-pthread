@@ -64,8 +64,10 @@ RETRY:
 static inline int notify_writable(queue_t *q)
 {
     if (q->status & QUEUE_STATUS_WRITABLE) {
+        // already notified
         return 0;
     } else if (notify(q->pipefd_writable[1]) != 0) {
+        // failed to write to pipe
         return -1;
     }
     q->status |= QUEUE_STATUS_WRITABLE;
@@ -75,8 +77,10 @@ static inline int notify_writable(queue_t *q)
 static inline int notify_readable(queue_t *q)
 {
     if (q->status & QUEUE_STATUS_READABLE) {
+        // already notified
         return 0;
     } else if (notify(q->pipefd_readable[1]) != 0) {
+        // failed to write to pipe
         return -1;
     }
     q->status |= QUEUE_STATUS_READABLE;
@@ -102,8 +106,10 @@ RETRY:
 static inline int unnotify_writable(queue_t *q)
 {
     if (!(q->status & QUEUE_STATUS_WRITABLE)) {
+        // already unnotified
         return 0;
     } else if (unnotify(q->pipefd_writable[0]) != 0) {
+        // failed to read from pipe
         return -1;
     }
     q->status &= ~QUEUE_STATUS_WRITABLE;
@@ -113,8 +119,10 @@ static inline int unnotify_writable(queue_t *q)
 static inline int unnotify_readable(queue_t *q)
 {
     if (!(q->status & QUEUE_STATUS_READABLE)) {
+        // already unnotified
         return 0;
     } else if (unnotify(q->pipefd_readable[0]) != 0) {
+        // failed to read from pipe
         return -1;
     }
     q->status &= ~QUEUE_STATUS_READABLE;
@@ -170,7 +178,7 @@ queue_t *queue_new(ssize_t maxitem, queue_delete_cb cb, void *arg)
     q->op            = 0;
     q->delete_cb     = cb;
     q->delete_cb_arg = arg;
-    q->maxitem       = (maxitem > 0) ? maxitem : 0;
+    q->maxitem       = (maxitem > 0) ? maxitem : 1;
     q->totalitem     = 0;
     q->head = q->tail = NULL;
     q->refcnt         = 1;
@@ -269,35 +277,41 @@ int queue_fd_writable(queue_t *q, uintptr_t op)
 
 int queue_push(queue_t *q, uintptr_t op, void *data, size_t size)
 {
-    int lockrc = queue_lock(q, op);
+    int lockrc         = queue_lock(q, op);
+    ssize_t totalitem  = q->totalitem + 1;
+    queue_item_t *item = NULL;
 
-    if (q->maxitem > 0 && q->totalitem >= q->maxitem) {
-        if (unnotify_writable(q) != 0) {
-            // failed to read from pipe
-            queue_unlock(q, op, lockrc);
-            return -1;
-        }
+    if (q->totalitem >= q->maxitem) {
+        // queue is full
         queue_unlock(q, op, lockrc);
         return 0;
     }
 
-    queue_item_t *item = (queue_item_t *)calloc(1, sizeof(queue_item_t));
+    item = (queue_item_t *)malloc(sizeof(queue_item_t));
     if (item == NULL) {
         queue_unlock(q, op, lockrc);
         return -1;
     }
 
-    // notifies the reader when the first item will be pushed
-    if (q->totalitem == 0 && notify_readable(q) != 0) {
+    // stop notifying the writer when the queue is full
+    if (totalitem >= q->maxitem && unnotify_writable(q) != 0) {
+        // failed to read from pipe
         free(item);
         queue_unlock(q, op, lockrc);
         return -1;
     }
 
-    item->data = data;
-    item->size = size;
-    q->totalitem++;
+    // notifies the reader when the first item will be pushed
+    if (totalitem == 1 && notify_readable(q) != 0) {
+        free(item);
+        queue_unlock(q, op, lockrc);
+        return -1;
+    }
 
+    item->data   = data;
+    item->size   = size;
+    item->next   = NULL;
+    q->totalitem = totalitem;
     if (q->tail) {
         item->prev    = q->tail;
         q->tail->next = item;
