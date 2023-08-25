@@ -157,11 +157,7 @@ static int new_pthread_self(lua_State *L)
         luaL_checktype(L, i, LUA_TLIGHTUSERDATA);
         queue_t *q           = (queue_t *)lua_topointer(L, i);
         lpthread_queue_t *lq = lua_newuserdata(L, sizeof(lpthread_queue_t));
-        if (queue_ref(q) != 0) {
-            return luaL_error(L,
-                              "failed to queue_ref() in new_pthread_self(): %s",
-                              strerror(errno));
-        }
+        queue_ref(q, (uintptr_t)lq);
         lq->queue  = q;
         lq->closed = 0;
         luaL_getmetatable(L, LPTHREAD_THREAD_QUEUE_MT);

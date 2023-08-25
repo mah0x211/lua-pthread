@@ -50,12 +50,13 @@ end
 
 --- define pthread.thread.queue metatable
 --- @class pthread.thread.queue
---- @field close fun(self: pthread.thread.queue):(ok:boolean, err:any)
---- @field nref fun(self: pthread.thread.queue):(nref:integer, err:any)
---- @field len fun(self: pthread.thread.queue):(len:integer, err:any)
---- @field size fun(self: pthread.thread.queue):(size:integer, err:any)
---- @field fd_readable fun(self: pthread.thread.queue):(fd:integer, err:any)
---- @field fd_writable fun(self: pthread.thread.queue):(fd:integer, err:any)
+--- @field close fun(self: pthread.thread.queue)
+--- @field nref fun(self: pthread.thread.queue):integer
+--- @field maxitem fun(self: pthread.thread.queue):integer
+--- @field len fun(self: pthread.thread.queue):integer
+--- @field size fun(self: pthread.thread.queue):integer
+--- @field fd_readable fun(self: pthread.thread.queue):integer
+--- @field fd_writable fun(self: pthread.thread.queue):integer
 --- @field push fun(self: pthread.thread.queue, value:boolean|number|string|lightuserdata):(ok:boolean, err:any, again:boolean)
 --- @field pop fun(self: pthread.thread.queue):(value:any, err:any, again:boolean)
 
@@ -81,7 +82,6 @@ end
 
 --- close
 --- @return boolean ok
---- @return any err
 function Channel:close()
     if self.readable_evid then
         dispose_event(self.readable_evid)
@@ -144,21 +144,18 @@ end
 
 --- nref
 --- @return integer nref
---- @return any err
 function Channel:nref()
     return self.queue:nref()
 end
 
 --- len
 --- @return integer len
---- @return any err
 function Channel:len()
     return self.queue:len()
 end
 
 --- size
 --- @return integer size
---- @return any err
 function Channel:size()
     return self.queue:size()
 end
@@ -168,7 +165,7 @@ end
 --- @param msec integer?
 --- @return boolean ok
 --- @return any err
---- @return boolean again
+--- @return boolean? again
 function Channel:push(value, msec)
     assert(msec == nil or is_uint(msec), 'msec must be integer or nil')
 
@@ -198,7 +195,7 @@ end
 --- @param msec integer?
 --- @return any value
 --- @return any err
---- @return boolean timeout
+--- @return boolean? timeout
 function Channel:pop(msec)
     assert(msec == nil or is_uint(msec), 'msec must be integer or nil')
 

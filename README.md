@@ -294,7 +294,7 @@ assert(th:join())
 print(ch:nref()) -- 1
 ```
 
-## ok, err = channel:close()
+## ok = channel:close()
 
 close the channel. if channel is already closed, this method returns `true`.  
 after closing the channel, the channel can not be used.
@@ -303,37 +303,33 @@ after closing the channel, the channel can not be used.
 **Returns**
 
 - `ok:boolean`: `true` on success.
-- `err:any`: error object.
 
 
-## nref, err = channel:nref()
+## nref = channel:nref()
 
 get the number of references to the channel.
 
 **Returns**
 
 - `nref:integer`: number of references.
-- `err:any`: error object.
 
 
-## len, err = channel:len()
+## len = channel:len()
 
 get the number of items in the channel.
 
 **Returns**
 
 - `len:integer`: number of items.
-- `err:any`: error object.
 
 
-## size, err = channel:size()
+## size = channel:size()
 
 get the used memory size of the channel.
 
 **Returns**
 
 - `size:integer`: used memory size.
-- `err:any`: error object.
 
 
 ## ok, err, timeout = channel:push( value [, msec] )

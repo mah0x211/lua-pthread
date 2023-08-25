@@ -25,6 +25,7 @@
 
 #include <errno.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <time.h>
@@ -46,11 +47,11 @@ typedef struct queue_item_t {
 typedef void (*queue_delete_cb)(void *data, void *arg);
 
 typedef struct queue_t {
-    pthread_mutex_t mutex;
+    uintptr_t op;
     queue_delete_cb delete_cb;
     void *delete_cb_arg;
     ssize_t maxitem;
-    size_t totalitem;
+    ssize_t totalitem;
     size_t maxsize;
     size_t totalsize;
     int refcnt;
@@ -87,13 +88,38 @@ typedef struct queue_t {
 queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
                    void *arg);
 
+#define QUEUE_LOCK_ALREADY 0
+#define QUEUE_LOCK_OK      1
+
+/**
+ * @brief queue_lock
+ *  Lock the queue object with the specified operation ID.
+ * @param queue The queue object.
+ * @param op The operation ID to be performed on the queue object.
+ * @return int QUEUE_LOCK_OK on success, QUEUE_LOCK_ALREADY if the queue object
+ * is already locked.
+ */
+int queue_lock(queue_t *queue, uintptr_t op);
+
+/**
+ * @brief queue_unlock
+ *  Unlock the queue object with the specified operation ID. If the operation ID
+ * is not matched, assert() is called and the program is terminated.
+ * @param queue The queue object.
+ * @param op The operation ID to be performed on the queue object.
+ * @param abort_on_fail if abort_on_fail is 1, abort() is called when the unlock
+ * fails.
+ * @return int 1 on success, otherwise failure.
+ */
+int queue_unlock(queue_t *q, uintptr_t op, int abort_on_fail);
+
 /**
  * @brief queue_ref
  *  Increment the reference count of the queue object.
  * @param queue The queue object.
- * @return int 0 on success, otherwise errno is set to indicate the error.
+ * @param op The operation ID to be performed on the queue object.
  */
-int queue_ref(queue_t *queue);
+void queue_ref(queue_t *queue, uintptr_t op);
 
 /**
  * @brief queue_unref
@@ -101,73 +127,78 @@ int queue_ref(queue_t *queue);
  *  If the reference count becomes <1, the queue object is deleted.
  *  You must call this function when you no longer need the queue object.
  * @param queue The queue object.
- * @return int 0 on success, otherwise errno is set to indicate the error.
+ * @param op The operation ID to be performed on the queue object.
  */
-int queue_unref(queue_t *queue);
+void queue_unref(queue_t *queue, uintptr_t op);
 
 /**
  * @brief queue_nref
  *  Get the reference count of the queue object.
  * @param queue The queue object.
+ * @param op The operation ID to be performed on the queue object.
  * @return int The reference count of the queue object, <0 means error and errno
  * is set to indicate the error.
  */
-int queue_nref(queue_t *queue);
+int queue_nref(queue_t *queue, uintptr_t op);
 
 /**
  * @brief queue_maxitem
  *  Get the maximum number of items that can be stored in the queue.
  * @param q The queue object.
+ * @param op The operation ID to be performed on the queue object.
  * @return ssize_t The maximum number of items that can be stored in the queue,
  */
-ssize_t queue_maxitem(queue_t *q);
+ssize_t queue_maxitem(queue_t *q, uintptr_t op);
 
 /**
  * @brief queue_len
  *  Get the number of items in the queue.
  * @param queue The queue object.
- * @return ssize_t The number of items in the queue, <0 means error and errno
- * is set to indicate the error.
+ * @param op The operation ID to be performed on the queue object.
+ * @return ssize_t The number of items in the queue
  */
-ssize_t queue_len(queue_t *queue);
+ssize_t queue_len(queue_t *queue, uintptr_t op);
 
 /**
  * @brief queue_size
  *  Get the used memory size of the queue.
  * @param queue The queue object.
- * @return size_t The used memory size of the queue, <0 means error and errno is
- * set to indicate the error.
+ * @param op The operation ID to be performed on the queue object.
+ * @return size_t The used memory size of the queue
  */
-ssize_t queue_size(queue_t *queue);
+ssize_t queue_size(queue_t *queue, uintptr_t op);
 
 /**
  * @brief queue_fd_readable
  *  Get a file descriptor to wait for the queue to become available for reading.
  *  You can use this file descriptor with select(), poll(), epoll(), etc.
  * @param queue The queue object.
- * @return int The file descriptor, <0 means error and errno is set to indicate
+ * @param op The operation ID to be performed on the queue object.
+ * @return int The file descriptor
  */
-int queue_fd_readable(queue_t *queue);
+int queue_fd_readable(queue_t *queue, uintptr_t op);
 
 /**
  * @brief queue_fd_writable
  *  Get a file descriptor to wait for the queue to become available for writing.
  *  You can use this file descriptor with select(), poll(), epoll(), etc.
  * @param queue The queue object.
- * @return int The file descriptor, <0 means error and errno is set to indicate
+ * @param op The operation ID to be performed on the queue object.
+ * @return int The file descriptor
  */
-int queue_fd_writable(queue_t *queue);
+int queue_fd_writable(queue_t *queue, uintptr_t op);
 
 /**
  * @brief queue_push
  *  Push an item to the tail of the queue.
  * @param queue The queue object.
+ * @param op The operation ID to be performed on the queue object.
  * @param data The data to be stored in the queue.
  * @param size The size of the data.
  * @return int 1 on success, 0 if the queue is full, otherwise errno is set to
  * indicate the error.
  */
-int queue_push(queue_t *queue, void *data, size_t size);
+int queue_push(queue_t *queue, uintptr_t op, void *data, size_t size);
 
 /**
  * @brief queue_pop
@@ -176,10 +207,11 @@ int queue_push(queue_t *queue, void *data, size_t size);
  *  You can wait for the queue to become available for reading by using the file
  * descriptor returned by queue_fd().
  * @param queue The queue object.
+ * @param op The operation ID to be performed on the queue object.
  * @param data The data to be returned.
  * @return int 0 on success, otherwise errno is set to indicate the error.
  */
-int queue_pop(queue_t *queue, void **data);
+int queue_pop(queue_t *queue, uintptr_t op, void **data);
 
 // /**
 //  * @brief queue_head

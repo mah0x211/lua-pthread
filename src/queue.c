@@ -121,6 +121,34 @@ static inline int unnotify_readable(queue_t *q)
     return 0;
 }
 
+static int dispose_queue(queue_t *q)
+{
+    // decrement reference count
+    if (q->refcnt > 1) {
+        // someone is using this queue
+        q->refcnt--;
+        return 0;
+    }
+
+    // delete all items
+    while (q->head) {
+        void *data         = q->head->data;
+        queue_item_t *next = q->head->next;
+
+        if (q->delete_cb) {
+            q->delete_cb(data, q->delete_cb_arg);
+        }
+        free(q->head);
+        q->head = next;
+    }
+
+    // close pipe
+    close_pipe(q->pipefd_readable);
+    close_pipe(q->pipefd_writable);
+    free(q);
+    return 1;
+}
+
 queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
                    void *arg)
 {
@@ -140,6 +168,7 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
         return NULL;
     }
 
+    q->op            = 0;
     q->delete_cb     = cb;
     q->delete_cb_arg = arg;
     q->maxitem       = (maxitem > 0) ? maxitem : 0;
@@ -149,129 +178,109 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
     q->head = q->tail = NULL;
     q->refcnt         = 1;
     q->status         = 0;
-    pthread_mutex_init(&q->mutex, NULL);
-
-    if ((q->maxitem == 0 || q->totalitem < q->maxitem) &&
-        notify_writable(q) != 0) {
+    if (notify_writable(q) != 0) {
         // failed to notify writable
-        queue_unref(q);
+        dispose_queue(q);
         return NULL;
     }
 
     return q;
 }
 
-int queue_ref(queue_t *q)
+int queue_lock(queue_t *q, uintptr_t op)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex))) {
-        return -1;
+    while (!__sync_bool_compare_and_swap(&q->op, 0, op)) {
+        __sync_synchronize();
+        if (q->op == op) {
+            // already locked
+            return QUEUE_LOCK_ALREADY;
+        }
     }
-    q->refcnt++;
-    pthread_mutex_unlock(&q->mutex);
-    return 0;
+    return QUEUE_LOCK_OK;
 }
 
-int queue_unref(queue_t *q)
+int queue_unlock(queue_t *q, uintptr_t op, int abort_on_fail)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
-
-    // decrement reference count
-    if (q->refcnt > 1) {
-        // someone is using this queue
-        q->refcnt--;
-        pthread_mutex_unlock(&q->mutex);
+    if (!__sync_bool_compare_and_swap(&q->op, op, 0)) {
+        if (abort_on_fail) {
+            fprintf(stderr,
+                    "queue_unlock attempted by a non-owner thread or "
+                    "invalid op %zu.\n",
+                    op);
+            abort();
+        }
         return 0;
     }
-
-    // delete all items
-    while (q->head) {
-        void *data         = q->head->data;
-        queue_item_t *next = q->head->next;
-
-        if (q->delete_cb) {
-            q->delete_cb(data, q->delete_cb_arg);
-        }
-        free(q->head);
-        q->head = next;
-    }
-
-    // close pipe
-    close_pipe(q->pipefd_readable);
-    close_pipe(q->pipefd_writable);
-
-    pthread_mutex_unlock(&q->mutex);
-    pthread_mutex_destroy(&q->mutex);
-    free(q);
-    return 0;
+    return 1;
 }
 
-int queue_nref(queue_t *q)
+void queue_ref(queue_t *q, uintptr_t op)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
+    int lockrc = queue_lock(q, op);
+    q->refcnt++;
+    queue_unlock(q, op, lockrc);
+}
+
+void queue_unref(queue_t *q, uintptr_t op)
+{
+    int lockrc = queue_lock(q, op);
+    if (!dispose_queue(q)) {
+        // someone is using this queue
+        queue_unlock(q, op, lockrc);
     }
+}
+
+int queue_nref(queue_t *q, uintptr_t op)
+{
+    int lockrc = queue_lock(q, op);
     int refcnt = q->refcnt;
-    pthread_mutex_unlock(&q->mutex);
+    queue_unlock(q, op, lockrc);
     return refcnt;
 }
 
-ssize_t queue_maxitem(queue_t *q)
+ssize_t queue_maxitem(queue_t *q, uintptr_t op)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
+    int lockrc      = queue_lock(q, op);
     ssize_t maxitem = q->maxitem;
-    pthread_mutex_unlock(&q->mutex);
+    queue_unlock(q, op, lockrc);
     return maxitem;
 }
 
-ssize_t queue_len(queue_t *q)
+ssize_t queue_len(queue_t *q, uintptr_t op)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
+    int lockrc  = queue_lock(q, op);
     ssize_t len = q->totalitem;
-    pthread_mutex_unlock(&q->mutex);
+    queue_unlock(q, op, lockrc);
     return len;
 }
 
-ssize_t queue_size(queue_t *q)
+ssize_t queue_size(queue_t *q, uintptr_t op)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
+    int lockrc   = queue_lock(q, op);
     ssize_t size = q->totalsize;
-    pthread_mutex_unlock(&q->mutex);
+    queue_unlock(q, op, lockrc);
     return size;
 }
 
-int queue_fd_readable(queue_t *q)
+int queue_fd_readable(queue_t *q, uintptr_t op)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
-    int fd = q->pipefd_readable[0];
-    pthread_mutex_unlock(&q->mutex);
+    int lockrc = queue_lock(q, op);
+    int fd     = q->pipefd_readable[0];
+    queue_unlock(q, op, lockrc);
     return fd;
 }
 
-int queue_fd_writable(queue_t *q)
+int queue_fd_writable(queue_t *q, uintptr_t op)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
-    int fd = q->pipefd_writable[0];
-    pthread_mutex_unlock(&q->mutex);
+    int lockrc = queue_lock(q, op);
+    int fd     = q->pipefd_writable[0];
+    queue_unlock(q, op, lockrc);
     return fd;
 }
 
-int queue_push(queue_t *q, void *data, size_t size)
+int queue_push(queue_t *q, uintptr_t op, void *data, size_t size)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
+    int lockrc = queue_lock(q, op);
 
     if ((q->maxitem > 0 && q->totalitem >= q->maxitem) ||
         (q->maxsize > 0 &&
@@ -279,23 +288,23 @@ int queue_push(queue_t *q, void *data, size_t size)
           q->totalsize > q->maxsize - size - sizeof(queue_item_t)))) {
         if (unnotify_writable(q) != 0) {
             // failed to read from pipe
-            pthread_mutex_unlock(&q->mutex);
+            queue_unlock(q, op, lockrc);
             return -1;
         }
-        pthread_mutex_unlock(&q->mutex);
+        queue_unlock(q, op, lockrc);
         return 0;
     }
 
     queue_item_t *item = (queue_item_t *)calloc(1, sizeof(queue_item_t));
     if (item == NULL) {
-        pthread_mutex_unlock(&q->mutex);
+        queue_unlock(q, op, lockrc);
         return -1;
     }
 
     // notifies the reader when the first item will be pushed
     if (q->totalitem == 0 && notify_readable(q) != 0) {
         free(item);
-        pthread_mutex_unlock(&q->mutex);
+        queue_unlock(q, op, lockrc);
         return -1;
     }
 
@@ -312,7 +321,7 @@ int queue_push(queue_t *q, void *data, size_t size)
         q->head = q->tail = item;
     }
 
-    pthread_mutex_unlock(&q->mutex);
+    queue_unlock(q, op, lockrc);
     return 1;
 }
 
@@ -335,13 +344,12 @@ static void *remove_head(queue_t *q)
     return data;
 }
 
-int queue_pop(queue_t *q, void **data)
+int queue_pop(queue_t *q, uintptr_t op, void **data)
 {
-    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
-        return -1;
-    }
+    int lockrc = queue_lock(q, op);
     if (q->head == NULL) {
-        pthread_mutex_unlock(&q->mutex);
+        // queue is empty
+        queue_unlock(q, op, lockrc);
         return 0;
     }
 
@@ -349,12 +357,12 @@ int queue_pop(queue_t *q, void **data)
     // the writer that the queue is available to writable.
     if ((q->totalitem == 1 && unnotify_readable(q) != 0) ||
         notify_writable(q) != 0) {
-        pthread_mutex_unlock(&q->mutex);
+        queue_unlock(q, op, lockrc);
         return -1;
     }
 
     *data = remove_head(q);
-    pthread_mutex_unlock(&q->mutex);
+    queue_unlock(q, op, lockrc);
 
     return 0;
 }
