@@ -25,7 +25,7 @@ local type = type
 local tostring = tostring
 local floor = math.floor
 local rawequal = rawequal
-local gettime = require('time.clock').gettime --- @type fun():number
+local getmsec = require('time.clock').getmsec --- @type fun():integer
 local io_wait_readable = require('io.wait').readable
 local poll = require('gpoll')
 local pollable = poll.pollable
@@ -163,11 +163,21 @@ function Channel:push(value, msec)
 
     local ok, err, again = self.queue:push(value)
     if again then
-        local deadline = msec and gettime() + (msec > 0 and msec / 1000 or 0)
+        local deadline, mtime
+        if msec then
+            mtime = getmsec()
+            deadline = mtime + msec
+        end
 
         while again do
-            if deadline and gettime() >= deadline then
-                return false, nil, true
+            if mtime then
+                -- get current time and check deadline
+                mtime = getmsec()
+                if mtime >= deadline then
+                    return false, nil, true
+                end
+                -- update remaining msec
+                msec = deadline - mtime
             end
 
             -- wait for writable
@@ -193,11 +203,21 @@ function Channel:pop(msec)
 
     local val, err, again = self.queue:pop()
     if again then
-        local deadline = msec and gettime() + (msec > 0 and msec / 1000 or 0)
+        local deadline, mtime
+        if msec then
+            mtime = getmsec()
+            deadline = mtime + msec
+        end
 
         while again do
-            if deadline and gettime() >= deadline then
-                return nil, nil, true
+            if mtime then
+                -- get current time and check deadline
+                mtime = getmsec()
+                if mtime >= deadline then
+                    return nil, nil, true
+                end
+                -- update remaining msec
+                msec = deadline - mtime
             end
 
             -- wait for readable
