@@ -62,7 +62,8 @@ function testcase.push()
         -1.1,
         'foo',
     }) do
-        assert(q:push(v))
+        local id = assert(q:push(v))
+        assert.is_uint(id)
         assert.equal(q:len(), 1)
         assert.equal(q:pop(), v)
     end
@@ -182,12 +183,12 @@ function testcase.push_maxitem()
     -- test that create a new pthread.thread.queue with maxitem
     local q = new_queue(2)
     for i = 1, 3 do
-        local ok, err, again = q:push(i)
+        local id, err, again = q:push(i)
         if i < 3 then
-            assert(ok, err)
+            assert(id, err)
             assert.is_nil(again)
         else
-            assert.is_false(ok)
+            assert.is_nil(id)
             assert.is_true(again)
             assert.is_nil(err)
         end
@@ -222,6 +223,33 @@ function testcase.pop()
     assert.is_true(again)
     assert.equal(poplist, pushlist)
     assert.equal(q:len(), 0)
+end
+
+function testcase.pop_match()
+    local q = new_queue(8)
+
+    -- test that return nil if queue is empty
+    assert.is_nil(q:pop_match(1))
+
+    local pushlist = {
+        true,
+        false,
+        1,
+        0,
+        -1,
+        1.1,
+        -1.1,
+        'foo',
+    }
+    for _, v in ipairs(pushlist) do
+        local id = assert(q:push(v))
+
+        -- test that return nil if identifier is not matched
+        assert.is_nil(q:pop_match(id + 1))
+
+        -- test that pop values if match an identifier
+        assert.equal(q:pop_match(id), v)
+    end
 end
 
 function testcase.pass_channel_to_thread()

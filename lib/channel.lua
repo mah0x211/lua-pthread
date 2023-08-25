@@ -56,8 +56,9 @@ end
 --- @field len fun(self: pthread.thread.queue):integer
 --- @field fd_readable fun(self: pthread.thread.queue):integer
 --- @field fd_writable fun(self: pthread.thread.queue):integer
---- @field push fun(self: pthread.thread.queue, value:boolean|number|string|lightuserdata):(ok:boolean, err:any, again:boolean)
+--- @field push fun(self: pthread.thread.queue, value:boolean|number|string|lightuserdata):(id:integer, err:any, again:boolean)
 --- @field pop fun(self: pthread.thread.queue):(value:any, err:any, again:boolean)
+--- @field pop_match fun(self: pthread.thread.queue, id:integer):(value:any, err:any)
 
 --- @class pthread.channel
 --- @field private queue pthread.thread.queue
@@ -159,38 +160,65 @@ end
 --- @return any err
 --- @return boolean? again
 function Channel:push(value, msec)
-    assert(msec == nil or is_uint(msec), 'msec must be integer or nil')
+    assert(msec == nil or is_uint(msec), 'msec must be uint or nil')
 
-    local ok, err, again = self.queue:push(value)
-    if again then
-        local deadline, mtime
-        if msec then
-            mtime = getmsec()
-            deadline = mtime + msec
-        end
-
-        while again do
-            if mtime then
-                -- get current time and check deadline
-                mtime = getmsec()
-                if mtime >= deadline then
-                    return false, nil, true
-                end
-                -- update remaining msec
-                msec = deadline - mtime
-            end
-
-            -- wait for writable
-            ok, err, again = self:wait_writable(msec)
-            if not ok then
-                return false, err, again
-            end
-            -- push value
-            ok, err, again = self.queue:push(value)
-        end
+    local deadline, mtime
+    if msec then
+        mtime = getmsec()
+        deadline = mtime + msec
     end
 
-    return ok, err, again
+    while true do
+        local id, err, again = self.queue:push(value)
+        if id then
+            if self.queue:maxitem() ~= 1 then
+                return true
+            end
+
+            -- act like the channel of the Go language
+            -- wait until the value is taken by other thread
+            local ok
+            ok, err = self:wait_writable(msec)
+            if ok then
+                return true
+            elseif err then
+                return false, err
+            elseif self:len() == 0 then
+                -- timeout, but the value has already been taken by other thread
+                return true
+            end
+
+            -- remove the pushed value
+            ok, err = self.queue:pop_match(id)
+            if ok then
+                -- timeout
+                return false, nil, true
+            elseif err then
+                return false, err
+            end
+            -- the value has already been taken by other thread
+            return true
+        end
+
+        if not again then
+            return false, err, again
+        elseif deadline then
+            -- get current time and check deadline
+            mtime = getmsec()
+            if mtime >= deadline then
+                return false, nil, true
+            end
+            -- update remaining msec
+            msec = deadline - mtime
+        end
+
+        -- wait for writable
+        local ok
+        ok, err, again = self:wait_writable(msec)
+        if not ok then
+            return false, err, again
+        end
+    end
 end
 
 --- pop

@@ -208,6 +208,17 @@ int queue_push(queue_t *queue, uintptr_t op, uintptr_t data, size_t size);
  */
 int queue_pop(queue_t *queue, uintptr_t op, uintptr_t *data);
 
+/**
+ * @brief queue_pop_match
+ *  Pop an item that data field matches the specified data from the head of the
+ * queue.
+ * @param queue The queue object.
+ * @param op The operation ID to be performed on the queue object.
+ * @param data The data to be used for matching.
+ * @return int 1 on found, 0 not found, otherwise errno is set to indicate the
+ */
+int queue_pop_match(queue_t *queue, uintptr_t op, uintptr_t data);
+
 // /**
 //  * @brief queue_head
 //  *  Peek an item from the head of the queue.

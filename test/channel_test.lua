@@ -1,6 +1,7 @@
 require('luacov')
 local testcase = require('testcase')
 local nanotime = require('testcase.timer').nanotime
+local sleep = require('testcase.timer').sleep
 local gpoll = require('gpoll')
 local new_pthread = require('pthread').new
 local new_channel = require('pthread.channel').new
@@ -32,7 +33,7 @@ function testcase.close()
 end
 
 function testcase.push()
-    local ch = new_channel()
+    local ch = new_channel(2)
 
     -- test that push values
     for _, v in ipairs({
@@ -78,8 +79,9 @@ end
 
 function testcase.push_async()
     -- test that calls gpoll.new_readable_event and gpoll.wait_event
-    local ch = new_channel(1)
+    local ch = new_channel(2)
     assert(ch:push('foo'))
+    assert(ch:push('bar'))
     local new_readable_called = false
     local wait_event_called = false
     gpoll.set_poller({
@@ -105,8 +107,9 @@ function testcase.push_async()
     ch:close()
 
     -- test that gpoll.new_readable_event return error
-    ch = new_channel(1)
+    ch = new_channel(2)
     assert(ch:push('foo'))
+    assert(ch:push('bar'))
     new_readable_called = false
     wait_event_called = false
     gpoll.set_poller({
@@ -252,10 +255,16 @@ function testcase.pass_channel_to_thread()
         local th, ch = ...
         assert.match(ch, '^pthread.channel: 0x%x+', false)
         assert(ch:push('hello'))
-        require('testcase.timer').sleep(.1)
     ]], ch))
     -- confirm that reference count is increased
     assert.equal(ch:nref(), 2)
+
+    -- confirm that thread is blocked in ch:push() call
+    sleep(.1)
+    local ok, err, again = th:join(100)
+    assert.is_false(ok)
+    assert.is_nil(err)
+    assert.is_true(again)
 
     -- test that get value from channel that pushed by thread
     local data = assert(ch:pop())
@@ -267,6 +276,32 @@ function testcase.pass_channel_to_thread()
     assert.equal(status, 'terminated')
     assert.is_nil(errmsg)
     assert.equal(ch:nref(), 1)
+
+    -- test that value is discarded if timeout expires
+    th = assert(new_pthread([[
+            local assert = require('assert')
+            local th, ch = ...
+            assert.match(ch, '^pthread.channel: 0x%x+', false)
+            local ok, err, again = ch:push('hello', 50)
+            assert.is_false(ok)
+            assert.is_nil(err)
+            assert.is_true(again)
+        ]], ch))
+    assert.equal(ch:nref(), 2)
+
+    -- wait until thread is finished
+    sleep(.1)
+    assert(th:join(100))
+    status, errmsg = th:status()
+    assert.equal(status, 'terminated')
+    assert.is_nil(errmsg)
+    assert.equal(ch:nref(), 1)
+
+    -- test that return nil
+    data, err, again = ch:pop(10)
+    assert.is_nil(data)
+    assert.is_nil(err)
+    assert.is_true(again)
 end
 
 function testcase.cannot_pass_invalid_channel_to_thread()

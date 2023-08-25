@@ -364,6 +364,31 @@ int queue_pop(queue_t *q, uintptr_t op, uintptr_t *data)
     return 0;
 }
 
+int queue_pop_match(queue_t *q, uintptr_t op, uintptr_t data)
+{
+    int lockrc = queue_lock(q, op);
+    if (q->head == NULL) {
+        // queue is empty
+        queue_unlock(q, op, lockrc);
+        return 0;
+    } else if (q->head->data != data) {
+        // data does not match
+        queue_unlock(q, op, lockrc);
+        return 0;
+    }
+
+    // stops notifying the reader when the last item will be popped and
+    // notifies the writer that the queue is available to writable.
+    if ((q->totalitem == 1 && unnotify_readable(q) != 0) ||
+        notify_writable(q) != 0) {
+        queue_unlock(q, op, lockrc);
+        return -1;
+    }
+    remove_head(q);
+    queue_unlock(q, op, lockrc);
+    return 1;
+}
+
 // queue_item_t *queue_head(queue_t *q)
 // {
 //     if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {

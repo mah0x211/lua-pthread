@@ -320,6 +320,11 @@ get the number of items in the channel.
 
 push the value to the channel. if the channel is full, wait until the value is popped from the channel in the specified timeout `msec`.
 
+**NOTE**
+
+- if the maxitem is set to `1`, this method will be blocked until the value is popped from the channel.
+- if the timeout `msec` is specified, the value is discarded when the timeout expires.
+
 **Parameters**
 
 - `value:boolean|number|string|lightuserdata`: value to push.
