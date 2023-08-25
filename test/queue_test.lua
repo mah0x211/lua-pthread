@@ -31,10 +31,10 @@ end
 function testcase.close()
     -- test that close a pthread.thread.queue
     local q = new_queue()
-    assert.is_true(q:close())
+    assert.is_nil(q:close())
 
     -- test that can be called multiple times
-    assert.is_true(q:close())
+    assert.is_nil(q:close())
 
     -- test that throws an error if queue is closed
     local err = assert.throws(function()

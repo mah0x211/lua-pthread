@@ -80,7 +80,6 @@ function Channel:init(queue)
 end
 
 --- close
---- @return boolean ok
 function Channel:close()
     if self.readable_evid then
         dispose_event(self.readable_evid)
@@ -88,7 +87,7 @@ function Channel:close()
     if self.writable_evid then
         dispose_event(self.writable_evid)
     end
-    return self.queue:close()
+    self.queue:close()
 end
 
 --- wait_readable

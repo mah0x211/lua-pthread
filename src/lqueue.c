@@ -246,8 +246,7 @@ static int close_lua(lua_State *L)
         queue_unref(q->queue, (uintptr_t)q);
         q->closed = 1;
     }
-    lua_pushboolean(L, 1);
-    return 1;
+    return 0;
 }
 
 static int tostring_lua(lua_State *L)
