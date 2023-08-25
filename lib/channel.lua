@@ -33,7 +33,7 @@ local new_readable_event = poll.new_readable_event
 local dispose_event = poll.dispose_event
 local wait_event = poll.wait_event
 
---- @type fun(maxitem: integer?, maxsize: integer?):(queue: pthread.thread.queue?, err: any)
+--- @type fun(maxitem: integer?):(queue: pthread.thread.queue?, err: any)
 local new_queue = require('pthread.thread').queue
 
 --- constants
@@ -54,7 +54,6 @@ end
 --- @field nref fun(self: pthread.thread.queue):integer
 --- @field maxitem fun(self: pthread.thread.queue):integer
 --- @field len fun(self: pthread.thread.queue):integer
---- @field size fun(self: pthread.thread.queue):integer
 --- @field fd_readable fun(self: pthread.thread.queue):integer
 --- @field fd_writable fun(self: pthread.thread.queue):integer
 --- @field push fun(self: pthread.thread.queue, value:boolean|number|string|lightuserdata):(ok:boolean, err:any, again:boolean)
@@ -154,12 +153,6 @@ function Channel:len()
     return self.queue:len()
 end
 
---- size
---- @return integer size
-function Channel:size()
-    return self.queue:size()
-end
-
 --- push
 --- @param value boolean|number|string|lightuserdata
 --- @param msec integer?
@@ -226,11 +219,10 @@ Channel = require('metamodule').new(Channel)
 
 --- new
 --- @param maxitem integer?
---- @param maxsize integer?
 --- @return pthread.channel? self
 --- @return any err
-local function new(maxitem, maxsize)
-    local queue, err = new_queue(maxitem, maxsize)
+local function new(maxitem)
+    local queue, err = new_queue(maxitem)
     if not queue then
         return nil, err
     end
