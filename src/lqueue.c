@@ -254,7 +254,22 @@ static int len_lua(lua_State *L)
         lua_errno_new(L, errno, NULL);
         return 2;
     }
-    lua_pushinteger(L, queue_len(q->queue));
+    lua_pushinteger(L, len);
+    return 1;
+}
+
+static int maxitem_lua(lua_State *L)
+{
+    lpthread_queue_t *q = check_lpthread_queue(L);
+    ssize_t maxitem     = queue_maxitem(q->queue);
+
+    if (maxitem < 0) {
+        // got an error
+        lua_pushnil(L);
+        lua_errno_new(L, errno, NULL);
+        return 2;
+    }
+    lua_pushinteger(L, maxitem);
     return 1;
 }
 
@@ -333,6 +348,7 @@ void luaopen_pthread_queue(lua_State *L)
     struct luaL_Reg methods[] = {
         {"close",       close_lua      },
         {"nref",        nref_lua       },
+        {"maxitem",     maxitem_lua    },
         {"len",         len_lua        },
         {"size",        size_lua       },
         {"fd_readable", fd_readable_lua},

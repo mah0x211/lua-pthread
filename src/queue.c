@@ -142,7 +142,7 @@ queue_t *queue_new(ssize_t maxitem, ssize_t maxsize, queue_delete_cb cb,
 
     q->delete_cb     = cb;
     q->delete_cb_arg = arg;
-    q->maxitem       = (size_t)(maxitem > 0) ? maxitem : 0;
+    q->maxitem       = (maxitem > 0) ? maxitem : 0;
     q->totalitem     = 0;
     q->maxsize       = (size_t)(maxsize > 0) ? maxsize : 0;
     q->totalsize     = 0;
@@ -215,6 +215,16 @@ int queue_nref(queue_t *q)
     int refcnt = q->refcnt;
     pthread_mutex_unlock(&q->mutex);
     return refcnt;
+}
+
+ssize_t queue_maxitem(queue_t *q)
+{
+    if ((errno = pthread_mutex_lock(&q->mutex)) != 0) {
+        return -1;
+    }
+    ssize_t maxitem = q->maxitem;
+    pthread_mutex_unlock(&q->mutex);
+    return maxitem;
 }
 
 ssize_t queue_len(queue_t *q)
