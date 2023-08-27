@@ -181,7 +181,8 @@ static int gc_lua(lua_State *L)
 {
     lpthread_t *th = luaL_checkudata(L, 1, LPTHREAD_THREAD_MT);
 
-    if (pthread_cancel(th->id) == 0) {
+    // cancel thread if it is running
+    if (th->pipefd[0] != -1 && pthread_cancel(th->id) == 0) {
         pthread_join(th->id, NULL);
     }
     // close pipe
