@@ -35,7 +35,7 @@ local wait = require('io.wait')
 local io_wait_readable = wait.readable
 local poll = require('gpoll')
 local pollable = poll.pollable
-local poll_readable = poll.readable
+local poll_wait_readable = poll.wait_readable
 local new_thread = require('pthread.thread').new
 local instanceof = require('metamodule').instanceof
 local EINVAL = require('errno').EINVAL
@@ -89,7 +89,8 @@ function Pthread:join(msec)
     local ok, err, again = self.thread:join()
     if again then
         -- wait until the thread terminates
-        local wait_readable = pollable() and poll_readable or io_wait_readable
+        local wait_readable = pollable() and poll_wait_readable or
+                                  io_wait_readable
         ok, err, again = wait_readable(self.thread:fd(), msec)
         if not ok then
             return false, err, again

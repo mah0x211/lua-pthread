@@ -78,60 +78,46 @@ function testcase.push()
 end
 
 function testcase.push_async()
-    -- test that calls gpoll.new_readable_event and gpoll.wait_event
+    -- test that calls gpoll.wait_readable
     local ch = new_channel(2)
     assert(ch:push('foo'))
     assert(ch:push('bar'))
-    local new_readable_called = false
-    local wait_event_called = false
+    local wait_readable_called = false
     gpoll.set_poller({
         pollable = function()
             return true
         end,
-        new_readable_event = function(fd)
-            new_readable_called = true
-            return fd
-        end,
-        wait_event = function(evid)
-            assert.equal(evid, ch.queue:fd_writable())
-            wait_event_called = true
-            return false, 'error wait_event', true
+        wait_readable = function()
+            wait_readable_called = true
+            return false, 'error wait_readable', true
         end,
     })
     local ok, err, timeout = ch:push('foo')
     assert.is_false(ok)
-    assert.match(err, 'error wait_event')
+    assert.match(err, 'error wait_readable')
     assert.is_true(timeout)
-    assert.is_true(new_readable_called)
-    assert.is_true(wait_event_called)
+    assert.is_true(wait_readable_called)
     ch:close()
 
-    -- test that gpoll.new_readable_event return error
+    -- test that gpoll.wait_readable_event return error
     ch = new_channel(2)
     assert(ch:push('foo'))
     assert(ch:push('bar'))
-    new_readable_called = false
-    wait_event_called = false
+    wait_readable_called = false
     gpoll.set_poller({
         pollable = function()
             return true
         end,
-        new_readable_event = function()
-            new_readable_called = true
-            return nil, 'error new_readable_event'
-        end,
-        wait_event = function(evid)
-            assert.equal(evid, ch.queue:fd_writable())
-            wait_event_called = true
-            return false, 'error wait_event', true
+        wait_readable = function()
+            wait_readable_called = true
+            return false, 'error wait_readable'
         end,
     })
     ok, err, timeout = ch:push('foo')
     assert.is_false(ok)
-    assert.match(err, 'error new_readable_event')
+    assert.match(err, 'error wait_readable')
     assert.is_nil(timeout)
-    assert.is_true(new_readable_called)
-    assert.is_false(wait_event_called)
+    assert.is_true(wait_readable_called)
     ch:close()
 end
 
@@ -194,56 +180,44 @@ function testcase.pop()
 end
 
 function testcase.pop_async()
-    -- test that calls gpoll.new_readable_event and gpoll.wait_event
+    -- test that calls gpoll.wait_readable and gpoll.wait_event
     local ch = new_channel()
-    local new_readable_called = false
-    local wait_event_called = false
+    local wait_readable_called = false
     gpoll.set_poller({
         pollable = function()
             return true
         end,
-        new_readable_event = function(fd)
-            new_readable_called = true
-            return fd
-        end,
-        wait_event = function(evid)
-            assert.equal(evid, ch.queue:fd_readable())
-            wait_event_called = true
-            return false, 'error wait_event', true
+        wait_readable = function(fd)
+            wait_readable_called = true
+            assert.equal(fd, ch.queue:fd_readable())
+            return false, 'error wait_readable', true
         end,
     })
     local val, err, timeout = ch:pop()
     assert.is_nil(val)
-    assert.match(err, 'error wait_event')
+    assert.match(err, 'error wait_readable')
     assert.is_true(timeout)
-    assert.is_true(new_readable_called)
-    assert.is_true(wait_event_called)
+    assert.is_true(wait_readable_called)
     ch:close()
 
-    -- test that gpoll.new_readable_event return error
+    -- test that gpoll.wait_readable return error
     ch = new_channel()
-    new_readable_called = false
-    wait_event_called = false
+    wait_readable_called = false
     gpoll.set_poller({
         pollable = function()
             return true
         end,
-        new_readable_event = function()
-            new_readable_called = true
-            return nil, 'error new_readable_event'
-        end,
-        wait_event = function(evid)
-            assert.equal(evid, ch.queue:fd_readable())
-            wait_event_called = true
-            return false, 'error wait_event', true
+        wait_readable = function(fd)
+            assert.equal(fd, ch.queue:fd_readable())
+            wait_readable_called = true
+            return false, 'error wait_readable'
         end,
     })
     val, err, timeout = ch:pop()
     assert.is_nil(val)
-    assert.match(err, 'error new_readable_event')
+    assert.match(err, 'error wait_readable')
     assert.is_nil(timeout)
-    assert.is_true(new_readable_called)
-    assert.is_false(wait_event_called)
+    assert.is_true(wait_readable_called)
     ch:close()
 end
 
