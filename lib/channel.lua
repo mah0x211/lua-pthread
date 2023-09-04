@@ -29,9 +29,8 @@ local getmsec = require('time.clock').getmsec --- @type fun():integer
 local io_wait_readable = require('io.wait').readable
 local poll = require('gpoll')
 local pollable = poll.pollable
-local new_readable_event = poll.new_readable_event
-local dispose_event = poll.dispose_event
-local wait_event = poll.wait_event
+local poll_wait_readable = poll.wait_readable
+local poll_unwait_readable = poll.unwait_readable
 
 --- @type fun(maxitem: integer?):(queue: pthread.thread.queue?, err: any)
 local new_queue = require('pthread.thread').queue
@@ -62,8 +61,6 @@ end
 
 --- @class pthread.channel
 --- @field private queue pthread.thread.queue
---- @field private readable_evid any?
---- @field private writable_evid any?
 local Channel = {}
 
 --- init
@@ -82,11 +79,8 @@ end
 
 --- close
 function Channel:close()
-    if self.readable_evid then
-        dispose_event(self.readable_evid)
-    end
-    if self.writable_evid then
-        dispose_event(self.writable_evid)
+    if pollable() then
+        poll_unwait_readable(self.queue:fd_writable())
     end
     self.queue:close()
 end
@@ -98,22 +92,8 @@ end
 --- @return any err
 --- @return boolean? timeout
 function Channel:wait_readable(msec)
-    local evid = self.readable_evid
-    if not evid then
-        if not pollable() then
-            return io_wait_readable(self.queue:fd_readable(), msec)
-        end
-
-        local err
-        evid, err = new_readable_event(self.queue:fd_readable())
-        if not evid then
-            return false, err
-        end
-        self.readable_evid = evid
-    end
-
-    -- wait until readable
-    return wait_event(evid, msec)
+    local wait_readable = pollable() and poll_wait_readable or io_wait_readable
+    return wait_readable(self.queue:fd_readable(), msec)
 end
 
 --- wait_writable
@@ -123,22 +103,8 @@ end
 --- @return any err
 --- @return boolean? timeout
 function Channel:wait_writable(msec)
-    local evid = self.writable_evid
-    if not evid then
-        if not pollable() then
-            return io_wait_readable(self.queue:fd_writable(), msec)
-        end
-
-        local err
-        evid, err = new_readable_event(self.queue:fd_writable())
-        if not evid then
-            return false, err
-        end
-        self.writable_evid = evid
-    end
-
-    -- wait until writable
-    return wait_event(evid, msec)
+    local wait_readable = pollable() and poll_wait_readable or io_wait_readable
+    return wait_readable(self.queue:fd_writable(), msec)
 end
 
 --- nref
