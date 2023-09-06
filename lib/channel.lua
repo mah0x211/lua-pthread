@@ -23,7 +23,6 @@
 local find = string.find
 local type = type
 local tostring = tostring
-local gettime = require('time.clock').gettime --- @type fun():integer
 local io_wait_readable = require('io.wait').readable
 local poll = require('gpoll')
 local pollable = poll.pollable
@@ -32,6 +31,13 @@ local poll_unwait_readable = poll.unwait_readable
 
 --- @type fun(maxitem: integer?):(queue: pthread.thread.queue?, err: any)
 local new_queue = require('pthread.thread').queue
+
+--- @class time.clock.deadline
+--- @field time fun(time.clock.deadline):number
+--- @field remain fun(time.clock.deadline):number
+
+--- @type fun(duration: number):(time.clock.deadline, number)
+local new_deadline = require('time.clock.deadline').new
 
 --- constants
 local INF_POS = math.huge
@@ -129,12 +135,7 @@ end
 function Channel:push(value, sec)
     assert(sec == nil or is_finite(sec), 'sec must be finite number or nil')
 
-    local deadline, mtime
-    if sec then
-        mtime = gettime()
-        deadline = mtime + sec
-    end
-
+    local deadline = sec and new_deadline(sec)
     while true do
         local id, err, again = self.queue:push(value)
         if id then
@@ -171,12 +172,10 @@ function Channel:push(value, sec)
             return false, err, again
         elseif deadline then
             -- get current time and check deadline
-            mtime = gettime()
-            if mtime >= deadline then
+            sec = deadline:remain()
+            if sec == 0 then
                 return false, nil, true
             end
-            -- update remaining sec
-            sec = deadline - mtime
         end
 
         -- wait for writable
@@ -196,37 +195,28 @@ end
 function Channel:pop(sec)
     assert(sec == nil or is_finite(sec), 'sec must be finite number or nil')
 
+    local deadline = sec and new_deadline(sec)
     local val, err, again = self.queue:pop()
-    if again then
-        local deadline, mtime
-        if sec then
-            mtime = gettime()
-            deadline = mtime + sec
+    while again do
+        if deadline then
+            -- get current time and check deadline
+            sec = deadline:remain()
+            if sec == 0 then
+                return nil, nil, true
+            end
         end
 
-        while again do
-            if mtime then
-                -- get current time and check deadline
-                mtime = gettime()
-                if mtime >= deadline then
-                    return nil, nil, true
-                end
-                -- update remaining sec
-                sec = deadline - mtime
-            end
-
-            -- wait for readable
-            local ok
-            ok, err, again = self:wait_readable(sec)
-            if not ok then
-                return nil, err, again
-            end
-            -- pop value
-            val, err, again = self.queue:pop()
+        -- wait for readable
+        local ok
+        ok, err, again = self:wait_readable(sec)
+        if not ok then
+            return nil, err, again
         end
+        -- pop value
+        val, err, again = self.queue:pop()
     end
 
-    return val, err, again
+    return val, err
 end
 
 Channel = require('metamodule').new(Channel)
