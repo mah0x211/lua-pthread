@@ -118,13 +118,13 @@ local th, err, again = pthread.new(assert(io.open(filename, 'r')):read('*a'))
 same as `pthread.new` function.
 
 
-## ok, err, timeout = pthread:join( [msec] )
+## ok, err, timeout = pthread:join( [sec] )
 
-wait for thread termination. if the thread has not yet terminated, wait until the thread terminates in the specified timeout `msec`.
+wait for thread termination. if the thread has not yet terminated, wait until the thread terminates in the specified timeout `sec`.
 
 **Parameters**
 
-- `msec:integer`: timeout in milliseconds. default is `nil` (wait forever).
+- `sec:number`: timeout in seconds. default is `nil` (wait forever).
 
 **Returns**
 
@@ -316,19 +316,19 @@ get the number of items in the channel.
 - `len:integer`: number of items.
 
 
-## ok, err, timeout = channel:push( value [, msec] )
+## ok, err, timeout = channel:push( value [, sec] )
 
-push the value to the channel. if the channel is full, wait until the value is popped from the channel in the specified timeout `msec`.
+push the value to the channel. if the channel is full, wait until the value is popped from the channel in the specified timeout `sec`.
 
 **NOTE**
 
 - if the maxitem is set to `1`, this method will be blocked until the value is popped from the channel.
-- if the timeout `msec` is specified, the value is discarded when the timeout expires.
+- if the timeout `sec` is specified, the value is discarded when the timeout expires.
 
 **Parameters**
 
 - `value:boolean|number|string|lightuserdata`: value to push.
-- `msec:integer`: timeout in milliseconds. default is `nil` (wait forever).
+- `sec:number`: timeout in seconds. default is `nil` (wait forever).
 
 **Returns**
 
@@ -337,13 +337,13 @@ push the value to the channel. if the channel is full, wait until the value is p
 - `timeout:boolean`: `true` if the channel is full and the timeout has expired.
 
 
-## value, err, timeout = channel:pop( [msec] )
+## value, err, timeout = channel:pop( [sec] )
 
-pop the value from the channel. if the channel is empty, wait until the value is pushed to the channel in the specified timeout `msec`.
+pop the value from the channel. if the channel is empty, wait until the value is pushed to the channel in the specified timeout `sec`.
 
 **Parameters**
 
-- `msec:integer`: timeout in milliseconds. default is `nil` (wait forever).
+- `sec:number`: timeout in seconds. default is `nil` (wait forever).
 
 **Returns**
 

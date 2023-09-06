@@ -81,17 +81,20 @@ function Pthread:init(newfn, src, ...)
 end
 
 --- join
---- @param msec integer?
+--- @param sec number?
 --- @return boolean ok
 --- @return any err
 --- @return boolean? timeout
-function Pthread:join(msec)
+function Pthread:join(sec)
     local ok, err, again = self.thread:join()
     if again then
         -- wait until the thread terminates
-        local wait_readable = pollable() and poll_wait_readable or
-                                  io_wait_readable
-        ok, err, again = wait_readable(self.thread:fd(), msec)
+        if pollable() then
+            ok, err, again = poll_wait_readable(self.thread:fd(), sec)
+        else
+            ok, err, again = io_wait_readable(self.thread:fd(), sec)
+        end
+
         if not ok then
             return false, err, again
         end

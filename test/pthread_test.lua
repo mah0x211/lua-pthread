@@ -137,7 +137,7 @@ function testcase.join_timeout()
     ]]))
 
     -- test that join a thread even if fd is closed
-    local ok, err, timeout = th:join(20)
+    local ok, err, timeout = th:join(0.02)
     assert.is_false(ok)
     assert.is_nil(err)
     assert.is_true(timeout)

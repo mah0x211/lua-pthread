@@ -101,21 +101,21 @@ function testcase.fd_writable()
     assert.is_uint(q:fd_writable())
 
     -- test that true if queue is writable
-    local ok, err, again = iowait.readable(q:fd_writable(), 100)
+    local ok, err, again = iowait.readable(q:fd_writable(), 0.1)
     assert.is_true(ok)
     assert.is_nil(err)
     assert.is_nil(again)
 
     -- test that still be writable if queue is not full
     assert(q:push('hello'))
-    ok, err, again = iowait.readable(q:fd_writable(), 100)
+    ok, err, again = iowait.readable(q:fd_writable(), 0.1)
     assert.is_true(ok)
     assert.is_nil(err)
     assert.is_nil(again)
 
     -- test that false if queue is full
     assert(q:push('world'))
-    ok, err, again = iowait.readable(q:fd_writable(), 100)
+    ok, err, again = iowait.readable(q:fd_writable(), 0.1)
     assert.is_false(ok)
     assert.is_nil(err)
     assert.is_true(again)
@@ -123,7 +123,7 @@ function testcase.fd_writable()
     -- test that can be writable again if pop a value
     assert.equal(q:pop(), 'hello')
     assert.equal(q:len(), 1)
-    ok, err, again = iowait.readable(q:fd_writable(), 100)
+    ok, err, again = iowait.readable(q:fd_writable(), 0.1)
     assert.is_true(ok)
     assert.is_nil(err)
     assert.is_nil(again)
@@ -136,21 +136,21 @@ function testcase.fd_readable()
     assert.is_uint(q:fd_readable())
 
     -- test that timeout if queue is empty
-    local ok, err, again = iowait.readable(q:fd_readable(), 100)
+    local ok, err, again = iowait.readable(q:fd_readable(), 0.1)
     assert.is_false(ok)
     assert.is_nil(err)
     assert.is_true(again)
 
     -- test that will be readable if push a value
     assert(q:push('hello'))
-    ok, err, again = iowait.readable(q:fd_readable(), 100)
+    ok, err, again = iowait.readable(q:fd_readable(), 0.1)
     assert.is_true(ok)
     assert.is_nil(err)
     assert.is_nil(again)
 
     -- test that readable until queue is empty
     assert(q:push('world'))
-    ok, err, again = iowait.readable(q:fd_readable(), 100)
+    ok, err, again = iowait.readable(q:fd_readable(), 0.1)
     assert.is_true(ok)
     assert.is_nil(err)
     assert.is_nil(again)
@@ -158,7 +158,7 @@ function testcase.fd_readable()
     -- test that still be readable if queue is not empty
     assert.equal(q:pop(), 'hello')
     assert.equal(q:len(), 1)
-    ok, err, again = iowait.readable(q:fd_writable(), 100)
+    ok, err, again = iowait.readable(q:fd_writable(), 0.1)
     assert.is_true(ok)
     assert.is_nil(err)
     assert.is_nil(again)
@@ -166,14 +166,14 @@ function testcase.fd_readable()
     -- test that timeout after pop all values
     assert.equal(q:pop(), 'world')
     assert.equal(q:len(), 0)
-    ok, err, again = iowait.readable(q:fd_readable(), 100)
+    ok, err, again = iowait.readable(q:fd_readable(), 0.1)
     assert.is_false(ok)
     assert.is_nil(err)
     assert.is_true(again)
 
     -- test that will be readable if push a value again
     assert(q:push('hello'))
-    ok, err, again = iowait.readable(q:fd_writable(), 100)
+    ok, err, again = iowait.readable(q:fd_writable(), 0.1)
     assert.is_true(ok)
     assert.is_nil(err)
     assert.is_nil(again)

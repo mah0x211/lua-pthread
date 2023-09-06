@@ -162,7 +162,7 @@ function testcase.pop()
     local v, err, again = ch:pop()
     while v ~= nil do
         poplist[#poplist + 1] = v
-        v, err, again = ch:pop(10)
+        v, err, again = ch:pop(0.01)
     end
     assert(not err, err)
     assert.is_true(again)
@@ -235,7 +235,7 @@ function testcase.pass_channel_to_thread()
 
     -- confirm that thread is blocked in ch:push() call
     sleep(.1)
-    local ok, err, again = th:join(100)
+    local ok, err, again = th:join(0.1)
     assert.is_false(ok)
     assert.is_nil(err)
     assert.is_true(again)
@@ -256,7 +256,7 @@ function testcase.pass_channel_to_thread()
             local assert = require('assert')
             local th, ch = ...
             assert.match(ch, '^pthread.channel: 0x%x+', false)
-            local ok, err, again = ch:push('hello', 50)
+            local ok, err, again = ch:push('hello', 0.05)
             assert.is_false(ok)
             assert.is_nil(err)
             assert.is_true(again)
@@ -265,14 +265,14 @@ function testcase.pass_channel_to_thread()
 
     -- wait until thread is finished
     sleep(.1)
-    assert(th:join(100))
+    assert(th:join(0.1))
     status, errmsg = th:status()
     assert.equal(status, 'terminated')
     assert.is_nil(errmsg)
     assert.equal(ch:nref(), 1)
 
     -- test that return nil
-    data, err, again = ch:pop(10)
+    data, err, again = ch:pop(0.01)
     assert.is_nil(data)
     assert.is_nil(err)
     assert.is_true(again)
