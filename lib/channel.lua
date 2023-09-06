@@ -23,9 +23,7 @@
 local find = string.find
 local type = type
 local tostring = tostring
-local floor = math.floor
-local rawequal = rawequal
-local getmsec = require('time.clock').getmsec --- @type fun():integer
+local gettime = require('time.clock').gettime --- @type fun():integer
 local io_wait_readable = require('io.wait').readable
 local poll = require('gpoll')
 local pollable = poll.pollable
@@ -39,12 +37,11 @@ local new_queue = require('pthread.thread').queue
 local INF_POS = math.huge
 local INF_NEG = -math.huge
 
---- is_uint
---- @param v any
+--- is_finite returns true if x is finite number
+--- @param x any
 --- @return boolean
-local function is_uint(v)
-    return type(v) == 'number' and (v < INF_POS and v > INF_NEG) and
-               rawequal(floor(v), v) and v >= 0
+local function is_finite(x)
+    return type(x) == 'number' and (x < INF_POS and x >= INF_NEG)
 end
 
 --- define pthread.thread.queue metatable
@@ -87,24 +84,28 @@ end
 
 --- wait_readable
 --- @private
---- @param msec integer?
+--- @param sec number?
 --- @return boolean ok
 --- @return any err
 --- @return boolean? timeout
-function Channel:wait_readable(msec)
-    local wait_readable = pollable() and poll_wait_readable or io_wait_readable
-    return wait_readable(self.queue:fd_readable(), msec)
+function Channel:wait_readable(sec)
+    if pollable() then
+        return poll_wait_readable(self.queue:fd_readable(), sec)
+    end
+    return io_wait_readable(self.queue:fd_readable(), sec)
 end
 
 --- wait_writable
 --- @private
---- @param msec integer?
+--- @param sec number?
 --- @return boolean ok
 --- @return any err
 --- @return boolean? timeout
-function Channel:wait_writable(msec)
-    local wait_readable = pollable() and poll_wait_readable or io_wait_readable
-    return wait_readable(self.queue:fd_writable(), msec)
+function Channel:wait_writable(sec)
+    if pollable() then
+        return poll_wait_readable(self.queue:fd_writable(), sec)
+    end
+    return io_wait_readable(self.queue:fd_writable(), sec)
 end
 
 --- nref
@@ -121,17 +122,17 @@ end
 
 --- push
 --- @param value boolean|number|string|lightuserdata
---- @param msec integer?
+--- @param sec number?
 --- @return boolean ok
 --- @return any err
 --- @return boolean? again
-function Channel:push(value, msec)
-    assert(msec == nil or is_uint(msec), 'msec must be uint or nil')
+function Channel:push(value, sec)
+    assert(sec == nil or is_finite(sec), 'sec must be finite number or nil')
 
     local deadline, mtime
-    if msec then
-        mtime = getmsec()
-        deadline = mtime + msec
+    if sec then
+        mtime = gettime()
+        deadline = mtime + sec
     end
 
     while true do
@@ -144,7 +145,7 @@ function Channel:push(value, msec)
             -- act like the channel of the Go language
             -- wait until the value is taken by other thread
             local ok
-            ok, err = self:wait_writable(msec)
+            ok, err = self:wait_writable(sec)
             if ok then
                 return true
             elseif err then
@@ -170,17 +171,17 @@ function Channel:push(value, msec)
             return false, err, again
         elseif deadline then
             -- get current time and check deadline
-            mtime = getmsec()
+            mtime = gettime()
             if mtime >= deadline then
                 return false, nil, true
             end
-            -- update remaining msec
-            msec = deadline - mtime
+            -- update remaining sec
+            sec = deadline - mtime
         end
 
         -- wait for writable
         local ok
-        ok, err, again = self:wait_writable(msec)
+        ok, err, again = self:wait_writable(sec)
         if not ok then
             return false, err, again
         end
@@ -188,35 +189,35 @@ function Channel:push(value, msec)
 end
 
 --- pop
---- @param msec integer?
+--- @param sec integer?
 --- @return any value
 --- @return any err
 --- @return boolean? timeout
-function Channel:pop(msec)
-    assert(msec == nil or is_uint(msec), 'msec must be integer or nil')
+function Channel:pop(sec)
+    assert(sec == nil or is_finite(sec), 'sec must be finite number or nil')
 
     local val, err, again = self.queue:pop()
     if again then
         local deadline, mtime
-        if msec then
-            mtime = getmsec()
-            deadline = mtime + msec
+        if sec then
+            mtime = gettime()
+            deadline = mtime + sec
         end
 
         while again do
             if mtime then
                 -- get current time and check deadline
-                mtime = getmsec()
+                mtime = gettime()
                 if mtime >= deadline then
                     return nil, nil, true
                 end
-                -- update remaining msec
-                msec = deadline - mtime
+                -- update remaining sec
+                sec = deadline - mtime
             end
 
             -- wait for readable
             local ok
-            ok, err, again = self:wait_readable(msec)
+            ok, err, again = self:wait_readable(sec)
             if not ok then
                 return nil, err, again
             end
