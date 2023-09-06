@@ -15,7 +15,7 @@ dependencies = {
     "gpoll >= 0.7",
     "io-wait >= 0.3",
     "metamodule >= 0.4.1",
-    "time-clock >= 0.3.0",
+    "time-clock >= 0.4.0",
 }
 external_dependencies = {
     PTHREAD = {
