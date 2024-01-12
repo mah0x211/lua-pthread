@@ -1,3 +1,8 @@
+if _G.PTHREAD_ARG then
+    -- prevent running this test script in the child thread
+    return
+end
+
 require('luacov')
 local testcase = require('testcase')
 local assert = require('assert')
@@ -78,6 +83,14 @@ function testcase.new_with_file()
     th, err = pthread.new_with_file('unknown_file')
     assert.is_nil(th)
     assert.match(err, 'unknown_file')
+end
+
+function testcase.clone()
+    -- test that clone a thread
+    local th = assert(pthread.clone('../'))
+    assert.equal(th:status(), 'running')
+    assert(th:join())
+    assert.match(th:status(), 'terminated')
 end
 
 --

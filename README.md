@@ -83,9 +83,14 @@ this function is equivalent to the following code.
 
 ```lua
 local pthread = require('pthread')
-local th, err, again = pthread.new(string.dump(function(...)
+
+local function new_with_func(fn, ...)
+    local str = string.dump(fn)
+    return pthread.new(str, ...)
+end
+new_with_func(function(...)
     print(...)
-end))
+end)
 ```
 
 **Parameters**
@@ -108,7 +113,22 @@ this function is equivalent to the following code.
 
 ```lua
 local pthread = require('pthread')
-local th, err, again = pthread.new(assert(io.open(filename, 'r')):read('*a'))
+
+local function new_with_file(filename, ...)
+    local file, err = io.open(filename, 'r')
+    if not file then
+        return nil, err
+    end
+    local str
+    str, err = file:read('*a')
+    file:close()
+    if not str then
+        return nil, err
+    end
+
+    return pthread.new(str, ...)
+end
+new_with_file('path/to/file.lua')
 ```
 
 **Parameters**
@@ -119,6 +139,41 @@ local th, err, again = pthread.new(assert(io.open(filename, 'r')):read('*a'))
 **Returns**
 
 same as `pthread.new` function.
+
+
+## th, err, again = pthread.clone( basedir [, ch, ...] )
+
+executes a current running script on a new posix thread and returns a `pthread` object. also, the script is passed a `pthread.self` object.
+
+**NOTE**
+
+this function is equivalent to the following code.
+
+```lua
+local pthread = require('pthread')
+
+local function clone(basedir, ...)
+    assert(basedir == nil or type(basedir) == 'string', 
+        'basedir must be string or nil')
+
+    local info = debug.getinfo(2, 'S')
+    local src = info.source:sub(2)
+    if basedir and src:sub(1) ~= '/' then
+        src = basedir .. '/' .. src
+    end
+    return pthread.new_with_file(src, ...)
+end
+clone()
+```
+
+**Parameters**
+
+- `basedir:string`: base directory of the script.
+- `ch:pthread.channel`: `pthread.channel` arguments to pass to the script.
+
+**Returns**
+
+same as `pthread.new_with_file` function.
 
 
 ## ok, err, timeout = pthread:join( [sec] )
