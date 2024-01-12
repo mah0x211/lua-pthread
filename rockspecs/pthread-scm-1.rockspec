@@ -12,8 +12,7 @@ description = {
 dependencies = {
     "lua >= 5.1",
     "errno >= 0.4.0",
-    "gpoll >= 0.7",
-    "io-wait >= 0.3",
+    "gpoll >= 0.9",
     "metamodule >= 0.4.1",
     "time-clock >= 0.4.0",
 }

@@ -60,6 +60,7 @@ jobs:
         sudo apt install lcov -y
         luarocks install testcase
         luarocks install luacov
+        luarocks install io-wait
     -
       name: Run Test
       run: |
