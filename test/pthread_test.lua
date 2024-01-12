@@ -18,6 +18,7 @@ function testcase.new()
         local assert = require('assert')
         local th = ...
         assert.match(th, '^pthread%.self: ', false)
+        assert.equal(th, _G.PTHREAD_ARG.self)
     ]])
     assert.match(th, 'pthread: 0x%x+', false)
     assert.is_nil(err)

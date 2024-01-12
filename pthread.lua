@@ -127,17 +127,24 @@ local STARTFN = {
     [[
 -- wrap pthread.queue arguments in pthread.channel
 local unpack = unpack or table.unpack
-local wrap_channel = require('pthread.channel').wrap
-local th = ...
-local queues = {select(2, ...)}
-for i = 1, #queues do
-    queues[i] = wrap_channel(queues[i])
-end]],
+_G.PTHREAD_ARG = {
+    self = ...,
+    channel = {}
+}
+do
+    local wrap_channel = require('pthread.channel').wrap
+    local channel = _G.PTHREAD_ARG.channel
+    local queues = {select(2, ...)}
+    for i = 1, #queues do
+        channel[i] = wrap_channel(queues[i])
+    end
+end
+]],
     '-- load and run user defined function',
     'fn = assert(' .. (LUA_VERSION <= 5.1 and 'loadstring' or 'load') .. '(',
     '',
     '))',
-    'fn(th, unpack(queues))',
+    'fn(_G.PTHREAD_ARG.self, unpack(_G.PTHREAD_ARG.channel))',
 }
 
 --- new

@@ -44,7 +44,7 @@ jobs:
         submodules: 'true'
     -
       name: Setup Lua ${{ matrix.lua-version }}
-      uses: leafo/gh-actions-lua@v9
+      uses: leafo/gh-actions-lua@v8
       with:
         luaVersion: ${{ matrix.lua-version }}
     -

@@ -54,6 +54,9 @@ local pthread = require('pthread')
 -- create thread
 local th, err, again = pthread.new([[
     print('arguments', ...) -- arguments pthread.self: 0x7fdc7a426c88
+    -- arguments can also be obtained from the global variable _G.PTHREAD_ARG
+    print('self', _G.PTHREAD_ARG.self) -- self pthread.self: 0x7fdc7a426c88
+    print('channel', _G.PTHREAD_ARG.channel[1]) -- channel nil
 ]])
 if err then
     print(err)
@@ -351,3 +354,8 @@ pop the value from the channel. if the channel is empty, wait until the value is
 - `err:any`: error object.
 - `timeout:boolean`: `true` if the channel is empty and the timeout has expired.
 
+---
+
+## License
+
+MIT License
