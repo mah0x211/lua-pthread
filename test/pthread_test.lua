@@ -1,5 +1,6 @@
 require('luacov')
 local testcase = require('testcase')
+local assert = require('assert')
 local sleep = require('testcase.timer').sleep
 local close = require('testcase.close')
 local pthread = require('pthread')

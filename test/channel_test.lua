@@ -1,5 +1,6 @@
 require('luacov')
 local testcase = require('testcase')
+local assert = require('assert')
 local nanotime = require('testcase.timer').nanotime
 local sleep = require('testcase.timer').sleep
 local gpoll = require('gpoll')
