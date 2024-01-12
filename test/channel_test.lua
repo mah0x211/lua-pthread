@@ -229,6 +229,8 @@ function testcase.pass_channel_to_thread()
         local assert = require('assert')
         local th, ch = ...
         assert.match(ch, '^pthread.channel: 0x%x+', false)
+        assert.equal(th, _G.PTHREAD_ARG.self)
+        assert.equal(ch, _G.PTHREAD_ARG.channel[1])
         assert(ch:push('hello'))
     ]], ch))
     -- confirm that reference count is increased
