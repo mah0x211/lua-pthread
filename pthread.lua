@@ -26,6 +26,8 @@ local tonumber = tonumber
 local load = load
 local loadstring = loadstring
 local open = io.open
+local getinfo = debug.getinfo
+local sub = string.sub
 local format = string.format
 local dump = string.dump
 local match = string.match
@@ -194,8 +196,28 @@ local function new_with_file(filename, ...)
     return new(str, ...)
 end
 
+--- clone
+--- @param basedir string?
+--- @param ... pthread.channel
+--- @return pthread? self
+--- @return any err
+--- @return boolean? again
+local function clone(basedir, ...)
+    assert(basedir == nil or type(basedir) == 'string',
+           'basedir must be string or nil')
+
+    local filename = sub(getinfo(2, 'S').source, 2)
+    if basedir and sub(filename, 1, 1) ~= '/' then
+        -- prepend basedir to relative path
+        filename = basedir .. '/' .. filename
+    end
+
+    return new_with_file(filename, ...)
+end
+
 return {
     new = new,
     new_with_func = new_with_func,
     new_with_file = new_with_file,
+    clone = clone,
 }
