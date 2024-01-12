@@ -33,11 +33,7 @@ local dump = string.dump
 local match = string.match
 local concat = table.concat
 local unpack = unpack or table.unpack
-local wait = require('io.wait')
-local io_wait_readable = wait.readable
-local poll = require('gpoll')
-local pollable = poll.pollable
-local poll_wait_readable = poll.wait_readable
+local poll_wait_readable = require('gpoll').wait_readable
 local new_thread = require('pthread.thread').new
 local instanceof = require('metamodule').instanceof
 local EINVAL = require('errno').EINVAL
@@ -91,12 +87,7 @@ function Pthread:join(sec)
     local ok, err, again = self.thread:join()
     if again then
         -- wait until the thread terminates
-        if pollable() then
-            ok, err, again = poll_wait_readable(self.thread:fd(), sec)
-        else
-            ok, err, again = io_wait_readable(self.thread:fd(), sec)
-        end
-
+        ok, err, again = poll_wait_readable(self.thread:fd(), sec)
         if not ok then
             return false, err, again
         end

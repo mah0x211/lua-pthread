@@ -23,7 +23,6 @@
 local find = string.find
 local type = type
 local tostring = tostring
-local io_wait_readable = require('io.wait').readable
 local poll = require('gpoll')
 local pollable = poll.pollable
 local poll_wait_readable = poll.wait_readable
@@ -95,10 +94,7 @@ end
 --- @return any err
 --- @return boolean? timeout
 function Channel:wait_readable(sec)
-    if pollable() then
-        return poll_wait_readable(self.queue:fd_readable(), sec)
-    end
-    return io_wait_readable(self.queue:fd_readable(), sec)
+    return poll_wait_readable(self.queue:fd_readable(), sec)
 end
 
 --- wait_writable
@@ -108,10 +104,7 @@ end
 --- @return any err
 --- @return boolean? timeout
 function Channel:wait_writable(sec)
-    if pollable() then
-        return poll_wait_readable(self.queue:fd_writable(), sec)
-    end
-    return io_wait_readable(self.queue:fd_writable(), sec)
+    return poll_wait_readable(self.queue:fd_writable(), sec)
 end
 
 --- nref
