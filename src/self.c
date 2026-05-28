@@ -20,8 +20,21 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+// project
 #include "lpthread.h"
+// depend
+#include "lua_errno.h"
+// lua
+#include <lauxlib.h>
+#include <lualib.h>
+// system
 #include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+#include <unistd.h>
 
 #define PTHREAD_SELF_MT "pthread.self"
 

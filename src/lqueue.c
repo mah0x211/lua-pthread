@@ -20,8 +20,19 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+// project
 #include "lpthread.h"
-#include <lauxhlib.h>
+// depend
+#include "lauxhlib.h"
+#include "lua_errno.h"
+// lua
+#include <lauxlib.h>
+// system
+#include <errno.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
 
 typedef enum {
     QDATA_TRUE = 0,

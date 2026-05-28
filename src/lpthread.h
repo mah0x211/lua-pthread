@@ -23,20 +23,17 @@
 #ifndef lpthread_h
 #define lpthread_h
 
-#include <errno.h>
-#include <fcntl.h>
-#include <pthread.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
-// lua
-#include <lua_errno.h>
-// libraries
+// project
 #include "queue.h"
+// depend
+#include "lua_errno.h"
+// lua
+#include <lauxlib.h>
+// system
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
 
 #define LPTHREAD_THREAD_MT       "pthread.thread"
 #define LPTHREAD_THREAD_QUEUE_MT "pthread.thread.queue"

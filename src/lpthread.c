@@ -24,8 +24,20 @@
  * Created by Masatoshi Teruya on 14/09/12.
  */
 
+// project
 #include "lpthread.h"
+// depend
+#include "lua_errno.h"
+// lua
+#include <lauxlib.h>
+// system
 #include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <string.h>
+#include <unistd.h>
 
 static int join_lua(lua_State *L)
 {
