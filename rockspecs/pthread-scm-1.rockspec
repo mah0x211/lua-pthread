@@ -1,3 +1,4 @@
+rockspec_format = "3.0"
 package = "pthread"
 version = "scm-1"
 source = {
@@ -13,8 +14,12 @@ dependencies = {
     "lua >= 5.1",
     "errno >= 0.4.0",
     "gpoll >= 0.9",
+    "lauxhlib >= 0.1.0",
     "metamodule >= 0.4.1",
     "time-clock >= 0.4.0",
+}
+build_dependencies = {
+    "luarocks-build-hooks >= 0.8.0",
 }
 external_dependencies = {
     PTHREAD = {
@@ -23,19 +28,40 @@ external_dependencies = {
     },
 }
 build = {
-    type = "make",
-    build_variables = {
-        CFLAGS = "$(CFLAGS)",
-        WARNINGS = "-Wall -Wno-trigraphs -Wmissing-field-initializers -Wreturn-type -Wmissing-braces -Wparentheses -Wno-switch -Wunused-function -Wunused-label -Wunused-parameter -Wunused-variable -Wunused-value -Wuninitialized -Wunknown-pragmas -Wshadow -Wsign-compare",
-        CPPFLAGS = "-I$(LUA_INCDIR) -I$(PTHREAD_INCDIR)",
-        LDFLAGS = "$(LIBFLAG) -L$(PTHREAD_LIBDIR)",
-        LIBS = "-lpthread",
-        LIB_EXTENSION = "$(LIB_EXTENSION)",
-        PTHREAD_COVERAGE = "$(PTHREAD_COVERAGE)",
+    type = "hooks",
+    before_build = {
+        "$(extra-vars)",
     },
-    install_variables = {
-        LIB_EXTENSION = "$(LIB_EXTENSION)",
-        INST_LIBDIR = "$(LIBDIR)",
-        INST_LUADIR = "$(LUADIR)",
+    extra_variables = {
+        CFLAGS = "-Wall -Wno-trigraphs -Wmissing-field-initializers -Wreturn-type -Wmissing-braces -Wparentheses -Wno-switch -Wunused-function -Wunused-label -Wunused-parameter -Wunused-variable -Wunused-value -Wuninitialized -Wunknown-pragmas -Wshadow -Wsign-compare",
+    },
+    conditional_variables = {
+        PTHREAD_COVERAGE = {
+            CFLAGS = "--coverage",
+            LIBFLAG = "--coverage",
+        },
+    },
+    modules = {
+        ["pthread"] = "pthread.lua",
+        ["pthread.channel"] = "lib/channel.lua",
+        ["pthread.thread"] = {
+            sources = {
+                "src/lpthread.c",
+                "src/lqueue.c",
+                "src/queue.c",
+                "src/self.c",
+            },
+            libraries = {
+                "pthread",
+            },
+            incdirs = {
+                "$(PTHREAD_INCDIR)",
+                "$(DEP_ERRNO_INCDIR)",
+                "$(DEP_LAUXHLIB_INCDIR)",
+            },
+            libdirs = {
+                "$(PTHREAD_LIBDIR)",
+            },
+        },
     },
 }

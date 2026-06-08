@@ -20,9 +20,15 @@
  * DEALINGS IN THE SOFTWARE.
  **/
 
+// project
 #include "queue.h"
+// system
+#include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 static inline void close_pipe(int *fds)
 {
