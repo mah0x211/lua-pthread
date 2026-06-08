@@ -76,5 +76,5 @@ jobs:
       with:
         use_oidc: true
         disable_search: true
-        files: ./coverage/lcov.info
+        files: ./luacov.report.out, ./coverage/lcov.info
         flags: unittests
